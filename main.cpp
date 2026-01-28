@@ -92,8 +92,8 @@ struct GLVertex {
     float radius;           // radius in screen pixels
     float cr, cg, cb, ca;   // color
     float ox, oy;
-
-    // quad corner offset
+    float wx, xy, xz;
+    
 };
 
 // CHANGE: OpenGL resources
@@ -116,10 +116,12 @@ layout(location = 4) in float inHeat;   // b.heat ∈ [0,100]
 
 uniform mat4 uProj;
 uniform mat4 uView;
+uniform vec3 uCameraPos;
 
 out vec4 vColor;
 out vec2 vOffset;
 out float vHeat;
+out vec3 vworld;
 
 void main() {
     vec3 right = vec3(uView[0][0], uView[1][0], uView[2][0]);
@@ -134,6 +136,7 @@ void main() {
     vColor = inColor;
     vOffset = inOffset; // ✅ FIXED
  vHeat   = inHeat;
+vworld = uCameraPos;
 }
 
 
@@ -168,7 +171,7 @@ const char* fragmentShaderSource = R"glsl(
 in vec2 vOffset;
 in vec4 vColor;
 in float vHeat;
-
+in vec3 vworld;
 out vec4 FragColor;
 
 // direction TOWARDS the light (normalized)
@@ -184,29 +187,41 @@ void main() {
     vec3 normal = normalize(vec3(vOffset, z));
 
     // ---- lighting ----
-    float diff = max(dot(normal, uLightDir), 0.0);
-    float light = 0.9 + 0.9 * diff;
+   float diff = max(dot(normal, uLightDir), 0.20);
+   float light =   1.1 + 0.9 * diff ;
 
-    vec3 baseColor = vColor.rgb * light;
+    vec3 baseColor = vColor.rgb  * light  ;
 
-    // ---- HEAT-DRIVEN CHEAP BLOOM ----
-    // normalize heat: 0–100 → 0–1
-    float heat01 = clamp(vHeat / 100.0, 0.0, 1.0);
 
-    // perceived brightness
-    float brightness = dot(baseColor, vec3(0.2126, 0.7152, 0.0722));
+  
+   /*// edge softness (screen-space, anti-aliased)
+    float edge = 1.0 - smoothstep(
+        0.9,
+        1.0,
+        r2 + fwidth(r2) * 5.0
+    );
 
-    // hot stuff blooms easier
-    float threshold = mix(0.75, 0.35, heat01);
+    // heat-controlled blur strength
+    float blur = clamp(vHeat, 0.0, 1.0);
 
-    // soft glow mask
-    float glow = smoothstep(threshold, 1.0, brightness);
+    // glow color (slightly hotter tint)
+    vec3 glowColor = baseColor * (1.2 + blur);
 
-    // bloom amount (tweak 2.0 if you want more punch)
-    vec3 bloom = baseColor * glow * heat01 * 5.0;
+    // mix sharp core with soft edge
+    vec3 finalColor = mix(glowColor, baseColor, edge);
 
-    FragColor = vec4(baseColor + bloom, 1.1);
+    // alpha fades softly at edges
+    float alpha = edge;
+
+    FragColor = vec4(finalColor, alpha);*/
+float blur= 1.0f;
+if( r2>0.1){
+blur=1.0 - (r2 -0.1);}
+if(blur <=0){
+blur =0.1;}
+FragColor = vec4(baseColor  ,blur);
 }
+
 
 
 )glsl";
@@ -368,19 +383,19 @@ float wx, wy, wz;
 
 
 //sph variables
-float h = 3.0f;
+float h = 3.5f;
+float cellsize = h*1.5f;
 float h2 = h * h;
 float rest_density = 100.0f;//density-idk
-float pressure = 20.0f;//pressure-idk--K
-float alpha_visc = 0.1f;  // Viscosity strength (0.5-2.0)
-float beta_visc = 0.01f;   // Shock capturing
-float gamma = 5.0f;
-float visc = 0.01f;
-bool heateffect = false;
-float rootRadius = 0.0f;
-float downf = 65.0f;
-float densitymultiplier = 1.0f;
+float pressure = 200.0f;//pressure-idk--K
 
+float visc = 0.01f;
+bool heateffect = true;
+
+float downf = 2.0f;
+
+
+bool addparticle = false;
 //
  
 std::vector<float> posx, posy, posz;
@@ -453,9 +468,9 @@ void registerBody() {
         float p = 0.0f;
        
        
-        int Br = 20;
-        int Bg = 45;
-        int Bb = 220;
+        int Br = 255;
+        int Bg = 255;
+        int Bb = 255;
 
 		posx.push_back(x);
         posy.push_back(y);
@@ -487,7 +502,9 @@ void registerBody() {
     }
 
 }
-
+inline float randf(float min, float max) {
+    return min + (max - min) * (float(rand()) / float(RAND_MAX));
+}
 
 void restartSimulation() {
 	posx.clear();
@@ -519,6 +536,7 @@ void restartSimulation() {
 	Pressure.clear();
   
     freeDynamicGrid();
+    freegpu();
     registerBody();
 	initgpu(posx.size());
 	initDynamicGrid(posx.size());
@@ -558,13 +576,18 @@ void restartSimulation() {
 
     }
 
+int rc = 255;
+int gc = 255;
+int bc = 255;
 void updatePhysics(float dt) {
     float subDt = dt / (float)substeps;
 
 
     for (int step = 0; step < substeps; step++) {
         
-
+        if (addparticle == true) {
+           // addparticles(totalBodies,maxz,size,mmass);
+        }
         
 
       
@@ -572,11 +595,11 @@ void updatePhysics(float dt) {
         if (colisionFun == true) {
 
 
-            stepsph(posx.size(), subDt, h, pressure, rest_density, gamma, alpha_visc,beta_visc,minX,minY,minZ,maxX,maxY,maxz,st,densitymultiplier);
+            stepsph(posx.size(), subDt, h, pressure, rest_density,minX,minY,minZ,maxX,maxY,maxz,visc);
 
         }
         if (heateffect == true) {
-            heating(posx.size(), subDt, hmulti, cold);
+            heating(posx.size(), subDt, hmulti, cold,rc,gc,bc);
         }
 
 
@@ -597,10 +620,10 @@ void updatePhysics(float dt) {
         posy.data(),
         posz.data(),
         Size.data(),
-		r.data(),
-		g.data(),
-		b.data(),
-        Heat.data());
+        r.data(),
+        g.data(),
+        b.data());
+       
 
     
 }
@@ -642,7 +665,7 @@ void initBoundingBox() {
 void drawAll() {
 
     glEnable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND); // IMPORTANT: no transparency
+    glEnable(GL_BLEND); // IMPORTANT: no transparency
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const int VERTS_PER_BODY = 3;
@@ -676,7 +699,7 @@ void drawAll() {
             verts[v + k].cr = cr;
             verts[v + k].cg = cg;
             verts[v + k].cb = cb;
-            verts[v + k].ca = 0.10f;
+            verts[v + k].ca = 1.10f;
 
             verts[v + k].ox = ox[k];
             verts[v + k].oy = oy[k];
@@ -725,6 +748,12 @@ void drawAll() {
         lightDir.x,
         lightDir.y,
         lightDir.z
+    );
+    glUniform3f(
+        glGetUniformLocation(program, "uCameraPos"),
+        wx,
+        wy,
+        wz
     );
 
     glBindVertexArray(vao);
@@ -917,7 +946,9 @@ int main() {
         std::cerr << "Failed to init GLAD\n"; return -1;
     }
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    //glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
     glViewport(0, 0, screenWidth, screenHeight);
 
     // CHANGE: Setup callbacks before ImGui
@@ -990,7 +1021,7 @@ int main() {
 
 	initDynamicGrid(posx.size());
    
-
+    
     double lastTime = glfwGetTime();
     double fpsClock = lastTime;
 
@@ -1015,6 +1046,7 @@ int main() {
             ImGui::Text("body count error");
         }
         ImGui::Text("FPS: %.0f (Min: %.0f / Max: %.0f)", avgFps, minFps, maxFps);
+       
         ImGui::Text("physics: %5.3f ms", fuc_ms);
         ImGui::Text("yaw: %.00f  pitch: %.00f", y, p);
         ImGui::Text("x:%.0f y %.0f z %.0f", wx, wy, wz);
@@ -1033,10 +1065,9 @@ int main() {
         ImGui::InputFloat("pressure f", &pressure);
        // ImGui::SliderFloat("pressure f", &pressure,0.001f,1000.0f);
        // ImGui::SliderFloat("density multiplier", &densitymultiplier,0.001f,10.0f);
-        ImGui::InputFloat("alpha visc", &alpha_visc);
-        ImGui::InputFloat("beta visc", &beta_visc);
-        ImGui::InputFloat("surface tension", &st);
-        ImGui::InputFloat("gamma", &gamma);
+        
+        ImGui::InputFloat("viscosity", &visc);
+      
 
        
         ImGui::SliderFloat("G", &downf,0.0f,1000.0f);
@@ -1053,15 +1084,18 @@ int main() {
             minY = -maxY;
             initBoundingBox();
         }
-
-
+      
         ImGui::Text("material settings");
         ImGui::InputInt("Total Bodies", &totalBodies);
         if (ImGui::IsItemDeactivatedAfterEdit()) {
 
             restartSimulation();
         }
-       
+        ImGui::SliderInt("color r", &rc,0,255);
+        ImGui::SliderInt("color g", &gc,0,255);
+        ImGui::SliderInt("color b", &bc,0,255);
+
+
         ImGui::InputFloat("size", &size);
         if (ImGui::IsItemDeactivatedAfterEdit()) {
 
@@ -1078,7 +1112,7 @@ int main() {
         ImGui::Checkbox("update bodies", &updateFun);
         ImGui::Checkbox("max at 60 fps", &option3);
 
-
+        ImGui::Checkbox("add particles ", &addparticle);
 
         
 
