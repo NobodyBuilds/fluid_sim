@@ -1,14 +1,16 @@
-﻿#include<cuda.h>
+﻿#include"compute.h"
+#include"D:\visual_studio\fluid_sim\struct.h"
+#include<atomic>
+#include<cuda.h>
 #include <cuda_runtime.h>
 #include<cuda_runtime_api.h>
+#include<curand_kernel.h>
 #include<device_launch_parameters.h>
 #include<iostream>
-#include"compute.h"
-#include<curand_kernel.h>
 #include<math_constants.h>
-#include<atomic>
 #include<math_functions.h>
-#include"D:\visual_studio\fluid_sim\struct.h"
+#include <thrust/device_ptr.h>
+#include <thrust/sort.h>
 
 
 #define BLOCKS(n) ((n + 255) / 256)
@@ -43,7 +45,7 @@ __host__ __device__ inline float3& operator+=(float3& a, const float3& b) {
     a.z += b.z;
     return a;
 }
-__host__ __device__ inline float3& operator-=(float3& a, float3& b) {
+__host__ __device__ inline float3& operator-=(float3& a, const float3& b) {
     a.x -= b.x;
     a.y -= b.y;
     a.z -= b.z;
@@ -79,30 +81,28 @@ __device__ __forceinline__ float lerp(float a, float b, float t) {
 float* dposx = nullptr;
 float* dposy = nullptr;
 float* dposz = nullptr;
-float* daclx = nullptr;
+
+float* daclx = nullptr; 
 float* dacly = nullptr;
 float* daclz = nullptr;
-float* dold_aclx = nullptr;
-float* dold_acly = nullptr;
-float* dold_aclz = nullptr;
+
 float* dvelx = nullptr;
 float* dvely = nullptr;
 float* dvelz = nullptr;
-float* dpx = nullptr;
-float* dpy = nullptr;
-float* dpz = nullptr;
+
 float* dSize = nullptr;
 float* dMass = nullptr;
 int* dIscenter = nullptr;
+
 int* dr = nullptr;
 int* dg = nullptr;
 int* db = nullptr;
-int* dbr = nullptr;
-int* dbg = nullptr;
-int* dbb = nullptr;
+
 float* dHeat = nullptr;
 float* dDensity = nullptr;
+float* dnearDensity = nullptr;
 float* dPressure = nullptr;
+float* dnearPressure = nullptr;
 
 
 
@@ -115,30 +115,30 @@ extern"C" void initgpu(int count) {
     cudaMalloc(&daclx, count * sizeof(float));
     cudaMalloc(&dacly, count * sizeof(float));
     cudaMalloc(&daclz, count * sizeof(float));
-    cudaMalloc(&dold_aclx, count * sizeof(float));
-    cudaMalloc(&dold_acly, count * sizeof(float));
-    cudaMalloc(&dold_aclz, count * sizeof(float));
+   
     cudaMalloc(&dvelx, count * sizeof(float));
     cudaMalloc(&dvely, count * sizeof(float));
     cudaMalloc(&dvelz, count * sizeof(float));
-    cudaMalloc(&dpx, count * sizeof(float));
-    cudaMalloc(&dpy, count * sizeof(float));
-    cudaMalloc(&dpz, count * sizeof(float));
+  
     cudaMalloc(&dSize, count * sizeof(float));
     cudaMalloc(&dMass, count * sizeof(float));
     cudaMalloc(&dIscenter, count * sizeof(int));
     cudaMalloc(&dr, count * sizeof(int));
     cudaMalloc(&db, count * sizeof(int));
     cudaMalloc(&dg, count * sizeof(int));
-    cudaMalloc(&dbr, count * sizeof(int));
-    cudaMalloc(&dbb, count * sizeof(int));
-    cudaMalloc(&dbg, count * sizeof(int));
+  
     cudaMalloc(&dHeat, count * sizeof(float));
     cudaMalloc(&dDensity, count * sizeof(float));
+    cudaMalloc(&dnearDensity, count * sizeof(float));
     cudaMalloc(&dPressure, count * sizeof(float));
+    cudaMalloc(&dnearPressure, count * sizeof(float));
 
 
-
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("ERROR: CUDA mem allocation failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
 
 
 
@@ -151,72 +151,25 @@ extern "C" void freegpu() {
     cudaFree(daclx);
     cudaFree(dacly);
     cudaFree(daclz);
-    cudaFree(dold_aclx);
-    cudaFree(dold_acly);
-    cudaFree(dold_aclz);
+ 
      cudaFree(dvelx );
      cudaFree(dvely );
      cudaFree(dvelz );
-     cudaFree(dpx);
-     cudaFree(dpy);
-     cudaFree(dpz);
+    
      cudaFree(dSize);
      cudaFree(dMass);
      cudaFree(dIscenter);
      cudaFree(dr);
      cudaFree(dg);
      cudaFree(db);
-     cudaFree(dbr);
-     cudaFree(dbg);
-     cudaFree(dbb);
+    
      cudaFree(dHeat);
      cudaFree(dDensity);
+     cudaFree(dnearDensity);
      cudaFree(dPressure);
+     cudaFree(dnearPressure);
 };
-extern"C" void copyarray(int count, float* px, float* py, float* pz,
-    float* vx, float* vy, float* vz,
-    float* ax, float* ay, float* az,
-    float* ox, float* oy, float* oz,
-    float* fx, float* fy, float* fz,
-    float* size,
-    float* mass,
-    int* is,
-    int* r, int* g, int* b,
-    int* br, int* bg, int* bb,
-    float* heat,
-    float* density,
-    float* pressure) {
 
-
-    cudaMemcpy(dposx, px, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dposy, py, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dposz, pz, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dvelx, vx, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dvely, vy, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dvelz, vz, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(daclx, ax, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dacly, ay, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(daclz, az, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dold_aclx, ox, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dold_acly, oy, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dold_aclz, oz, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dpx, fx, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dpy, fy, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dpz, fz, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dSize, size, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dMass, mass, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dIscenter, is, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dr, r, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dg, g, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(db, b, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dbr, br, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dbg, bg, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dbb, bb, count * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dHeat, heat, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dDensity, density, count * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dPressure, pressure, count * sizeof(float), cudaMemcpyHostToDevice);
-
-}
 extern"C" void updatearray(int count, float* px, float* py, float* pz, float* size, int* r, int* g, int* b) {
     cudaMemcpy(px, dposx, count * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(py, dposy, count * sizeof(float), cudaMemcpyDeviceToHost);
@@ -227,7 +180,7 @@ extern"C" void updatearray(int count, float* px, float* py, float* pz, float* si
     cudaMemcpy(g, dg, count * sizeof(int), cudaMemcpyDeviceToHost);
  
 
-
+   
 
 }
 
@@ -274,16 +227,16 @@ __device__ __host__ inline unsigned int getHashFromPos(float x, float y, float z
 
 extern "C" void initDynamicGrid(int maxParticles) {
     HASH_TABLE_SIZE = maxParticles * 2;
-    size_t hashTableBytes = HASH_TABLE_SIZE * sizeof(HashCell);
+  //  size_t hashTableBytes = HASH_TABLE_SIZE * sizeof(HashCell);
 
     printf("\n=== INITIALIZING DYNAMIC GRID ===\n");
     printf("Hash table size: %d buckets\n", HASH_TABLE_SIZE);
     printf("Max particles per cell: %d\n", MAX_PARTICLES_PER_CELL);
-    printf("Memory for hash table: %.2f MB\n", hashTableBytes / (1024.0f * 1024.0f));
+   // printf("Memory for hash table: %.2f MB\n", hashTableBytes / (1024.0f * 1024.0f));
     printf("Max particles: %d\n", maxParticles);
 
 
-    cudaMalloc(&d_hashTable, hashTableBytes);
+   // cudaMalloc(&d_hashTable, hashTableBytes);
     cudaMalloc(&d_cellStart, HASH_TABLE_SIZE * sizeof(int));
     cudaMalloc(&d_cellEnd, HASH_TABLE_SIZE * sizeof(int));
     cudaMalloc(&d_particleHash, maxParticles * sizeof(int));
@@ -295,7 +248,7 @@ extern "C" void initDynamicGrid(int maxParticles) {
         return;
     }
     // Initialize
-    cudaMemset(d_hashTable, 0, hashTableBytes);
+  //  cudaMemset(d_hashTable, 0, hashTableBytes);
     cudaMemset(d_cellStart, -1, HASH_TABLE_SIZE * sizeof(int));
     cudaMemset(d_cellEnd, -1, HASH_TABLE_SIZE * sizeof(int));
 
@@ -303,7 +256,7 @@ extern "C" void initDynamicGrid(int maxParticles) {
         HASH_TABLE_SIZE, MAX_PARTICLES_PER_CELL);
 }
 extern "C" void freeDynamicGrid() {
-    cudaFree(d_hashTable);
+   // cudaFree(d_hashTable);
     cudaFree(d_cellStart);
     cudaFree(d_cellEnd);
     cudaFree(d_particleHash);
@@ -311,6 +264,8 @@ extern "C" void freeDynamicGrid() {
 
     d_cellStart = nullptr;
     d_cellEnd = nullptr;
+    d_particleHash = nullptr;
+    d_particleIndex = nullptr;
 }
 
 __global__ void computeHashKernel(
@@ -319,7 +274,7 @@ __global__ void computeHashKernel(
     const float* px,
     const float* py,
     const float* pz,
-    unsigned int* particleHash,
+     int* particleHash,
     int* particleIndex,
     int hs
 ) {
@@ -351,7 +306,7 @@ __global__ void computeHashKernel(
 
 __global__ void findCellBoundariesKernel(
     int numParticles,
-    const unsigned int* particleHash,
+     int* particleHash,
     int* cellStart,
     int* cellEnd
 ) {
@@ -424,62 +379,7 @@ __global__ void buildHashTableKernel(
     }
 }
 
-__global__ void getGridStatsKernel(
-    const HashCell* hashTable,
-    int* maxCellCount,
-    int* totalOccupiedCells, int HASH_TABLE_SIZE
-) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= HASH_TABLE_SIZE) return;
 
-    int count = hashTable[i].count;
-    if (count > 0) {
-        atomicMax(maxCellCount, count);
-        atomicAdd(totalOccupiedCells, 1);
-    }
-}
-
-
-void printGridStats() {
-    int* d_maxCount;
-    int* d_occupiedCells;
-    cudaMalloc(&d_maxCount, sizeof(int));
-    cudaMalloc(&d_occupiedCells, sizeof(int));
-    cudaMemset(d_maxCount, 0, sizeof(int));
-    cudaMemset(d_occupiedCells, 0, sizeof(int));
-
-    int blocks = (HASH_TABLE_SIZE + THREADS - 1) / THREADS;
-    getGridStatsKernel << <blocks, THREADS >> > (d_hashTable, d_maxCount, d_occupiedCells, HASH_TABLE_SIZE);
-    cudaDeviceSynchronize();
-
-    int maxCount, occupiedCells;
-    cudaMemcpy(&maxCount, d_maxCount, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&occupiedCells, d_occupiedCells, sizeof(int), cudaMemcpyDeviceToHost);
-
-    printf("\n--- Grid Statistics ---\n");
-    printf("Total hash buckets: %d\n", HASH_TABLE_SIZE);
-    printf("Occupied buckets: %d (%.1f%%)\n",
-        occupiedCells, 100.0f * occupiedCells / HASH_TABLE_SIZE);
-    printf("Max particles in single cell: %d\n", maxCount);
-    printf("Cell capacity: %d\n", MAX_PARTICLES_PER_CELL);
-
-    if (maxCount >= MAX_PARTICLES_PER_CELL) {
-        printf("WARNING: Some cells are at capacity! Consider:\n");
-        printf("  - Increasing MAX_PARTICLES_PER_CELL\n");
-        printf("  - Increasing cellSize\n");
-        printf("  - Increasing HASH_TABLE_SIZE\n");
-    }
-
-    if (occupiedCells > HASH_TABLE_SIZE * 0.7f) {
-        printf("WARNING: Hash table >70%% full, may have collisions\n");
-        printf("  - Consider increasing HASH_TABLE_SIZE\n");
-    }
-    /*
-   printf("--- End Statistics ---\n");*/
-
-    cudaFree(d_maxCount);
-    cudaFree(d_occupiedCells);
-}
 
 
 void buildDynamicGrid(
@@ -499,29 +399,46 @@ void buildDynamicGrid(
 
     // Clear hash table
   
-    cudaMemset(d_hashTable, 0, HASH_TABLE_SIZE * sizeof(HashCell));
+ //   cudaMemset(d_hashTable, 0, HASH_TABLE_SIZE * sizeof(HashCell));
+
+    cudaMemset(d_cellStart, -1, HASH_TABLE_SIZE * sizeof(int));
+    cudaMemset(d_cellEnd, -1, HASH_TABLE_SIZE * sizeof(int));
 
     // Build hash table directly
     int blocks = (numParticles + THREADS - 1) / THREADS;
     /*printf("Launching kernel: %d blocks, %d threads/block\n", blocks, THREADS);*/
 
-    buildHashTableKernel << <blocks, THREADS >> > (
+    /*buildHashTableKernel << <blocks, THREADS >> > (
         numParticles, cellSize,
         d_px, d_py, d_pz,
         d_hashTable, HASH_TABLE_SIZE
-        );
+        );*/
+    computeHashKernel << < blocks, THREADS >> > (numParticles,cellSize,d_px,d_py,d_pz,d_particleHash,d_particleIndex,HASH_TABLE_SIZE);
+    
     cudaError_t err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
         printf("ERROR: Grid build failed: %s\n", cudaGetErrorString(err));
     }
+    //sorting
+    thrust::sort_by_key(thrust::device, d_particleHash, d_particleHash + numParticles, d_particleIndex);
 
-    
 
-    //Print statistics
-  /*printGridStats();
-   printf("=== GRID BUILD COMPLETE ===\n\n");*/
+    if (d_particleHash == nullptr || d_particleIndex == nullptr) {
+        printf("ERROR: Null pointers in grid sort!\n");
+        return;
+    }
 
-    cudaDeviceSynchronize();
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        printf("ERROR: Grid sort failed: %s\n", cudaGetErrorString(err));
+    }
+
+    findCellBoundariesKernel << <blocks, THREADS >> > (numParticles, d_particleHash, d_cellStart, d_cellEnd);
+     err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        printf("ERROR: Grid bound failed: %s\n", cudaGetErrorString(err));
+    }
+
 }
 
 
@@ -530,9 +447,9 @@ __device__ float smoothingkernel(float r, float h,float h9) {
     if (r >= 0.0f && r < h) {
         float polycoeff = 315.0f / (64.0f * CUDART_PI_F * h9);
         float v = h * h - r * r;
-        return polycoeff * v * v * v;
+        return  v * v * v * polycoeff;
 
-        /* float v = CUDART_PI * powf(h, 8) / 4;
+         /*float v = CUDART_PI * powf(h, 8) / 4;
          float value = fmaxf(0.0f, h * h - r * r);
          return value * value / v;*/
     }
@@ -551,10 +468,13 @@ __device__ float densitykernel(float dst, float radius,float h9) {
     return smoothingkernel(dst, radius,h9);
     //  return spikyKernel(dst, radius);
 }
+__device__ float neardensitykernel(float r, float h) {
+   return spikyKernel(r, h);
+}
 __device__ float spikyGrad(float r, float h,float h6) {
     if (r > 0.0f && r < h) {
         float v = h - r;
-        return -45.0f / (CUDART_PI_F * h6) * v * v;
+        return -45.0f / (CUDART_PI_F * h6) * v*v;
 
 
     }
@@ -562,7 +482,10 @@ __device__ float spikyGrad(float r, float h,float h6) {
 }
 __device__ float PressureFromDensity(float density, float pressure, float rest_density)
 {
-    return pressure * (density - rest_density);
+    float p= pressure * (density - rest_density);
+
+    
+    return p;
 
     // Adiabatic index
 
@@ -584,48 +507,160 @@ __device__ float PressureFromDensity(float density, float pressure, float rest_d
            //    return pressure * (powf(ratio, gamma) - 1.0f);
            //}
 }
+__device__ float nearpressurefromdensity(float d, float k) {
+    return d * k;
+}
 
-__device__ float viscosityKernel(float r, float h) {
+__device__ float viscosityKernel(float r, float h,float h9) {
     float h2 = h * h;
     if (r < h) {
         return 45.0f / (CUDART_PI_F * (h2 * h2 * h2)) * (h - r);
     }
     return 0.0f;
+   
 }
-__device__ float artificialViscosity(int i, int j, float r, float h, float pressure, float rest_density, float gamma, float alpha_visc, float beta_visc, float* px, float* py, float* pz, float* vx, float* vy, float* vz, float* dens) {
-    float3 ivel = { vx[i],vy[i],vz[i] };
-    float3 jvel = { vx[j],vy[j],vz[j] };
 
-    float3 ipos = { px[i],py[i],pz[i] };
-    float3 jpos = { px[j],py[j],pz[j] };
-
-    float3 vij = ivel - jvel;
-    float3 rij = ipos - jpos;
-
-    float vdotr = dot(vij, rij);
-    if (vdotr >= 0.0f) return 0.0f; // particles moving apart
-
-    float rho_avg = 0.5f * (dens[i] + dens[j]);
-    float c_s = sqrtf(gamma * pressure / rho_avg);
-
-    float mu = h * vdotr / (r * r + 0.01f * h * h);
-
-    return (-alpha_visc * c_s * mu + beta_visc * mu * mu) / rho_avg;
-}
 //functions
-__global__ void self_density(int n, float h, float* density, float* mass,float h9) {
+__global__ void self_density(int n, float h, float* density, float* mass,float* neardensity,float sdensity,float ndensity) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
 
-    density[i] = mass[i] * densitykernel(0.0f, h,h9);
+    bool debug = (i == 0);
+    debug = 0;
+    float r = 0.0f;
+    
+   
+    float value = 0.0f;
+    float nvalue = 0.0f;
+    //density kernel
+    if(r>=0.0f && r< h){
 
+        value = sdensity; //precompute selfdensity based on h as r is zero      
+    }
+    //near density kernel
+    if(r>=0.0f && r< h){
+
+       
+        nvalue = ndensity;//precompute near density based on h as r is zero 
+    }
+
+     float n_d = mass[i] * nvalue;
+    float  d = mass[i] * value;
+    neardensity[i] = n_d;
+    density[i] = d;
+    if (debug)printf("self density :%6f\n", d);
+    if (debug)printf("near density :%6f\n", n_d);
 
 }
-__global__ void self_pressure(int n,  float k, float rest_density, float* density,float* pressure) {
+__global__ void self_pressure(int n,  float k, float rest_density, float* density,float* pressure,float* nearpressure,float* neardensity,float k_) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    bool debug = 0;
+   // bool debug = (i == 0);
+    float p = k * (density[i] - rest_density);;
+    float n_p = neardensity[i] * k_;
+    nearpressure[i] = n_p;
+    pressure[i] = p;
+    if (debug && p < 0)printf("pressure value from pressurefromdensity kernel is negative\n");
+    if (debug && p > 0)printf("pressure value from pressurefromdensity kernel is postive\n");
+
+}
+//for optimization still in progrress
+__global__ void sphCompute(
+    int n, float h, float cellSize,
+    float* px, float* py, float* pz,
+    float* vx, float* vy, float* vz,
+    float* ax, float* ay, float* az,
+    float* density, float* pressure,
+    float* mass, int* cellstart, int* cellend,
+    int* particleindex, float K, float r_density,
+    float visc, float h2, float h6, float h9, int hs
+) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
 
-    pressure[i] = PressureFromDensity(density[i], k, rest_density);
+    float xi = px[i];
+    float yi = py[i];
+    float zi = pz[i];
+   
+    float3 force={0.0f,0.0f,0.0f};
+    float3 vforce = { 0.0f,0.0f,0.0f };
+    float3 deltaV = { 0.0f,0.0f,0.0f };
+    float epsilon = 0.3f;
+    float p_i = pressure[i];
+    float rho_i = density[i];
+    int cx, cy, cz;
+    getCell(xi, yi, zi, cellSize, cx, cy, cz);
+
+    // Search 27 neighboring cells
+    for (int dz = -1; dz <= 1; dz++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
+
+                int start = cellstart[hash];
+                int end = cellend[hash];
+                if (start == -1) continue;
+
+                for (int k = start; k < end; k++) {
+                    int j = particleindex[k];
+
+                    if (j == i) continue;
+
+                    float dx_val = xi - px[j];
+                    float dy_val = yi - py[j];
+                    float dz_val = zi - pz[j];
+                    float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
+
+                    if (r2 < h2 && r2 > 1e-9f) {
+                        float r = sqrtf(r2);
+                        //density
+                        float D= mass[j] * densitykernel(r, h, h9);
+                        density[i] = D;
+                        //pressure
+                        float p_j = pressure[j];
+                        float3 dir= { dx_val / r, dy_val / r, dz_val / r };
+                        float rho_j = density[j];
+                        float3 ri = make_float3(xi, yi, zi);
+                        float3 rj = make_float3(px[j], py[j], pz[j]);
+                        float3 rij = ri - rj;
+                        float rl = length(rij);
+                        float3 gradW =(rij/rl) * spikyGrad(r, h, h6);
+                        float pressureterm = (p_i / (rho_i * rho_i) + p_j / (rho_j * rho_j));
+
+                        force += mass[j] * pressureterm * gradW;//* dir;
+                        //viscosity
+                        float3 vi = make_float3(vx[i], vy[i], vz[i]);
+                        float3 vj = make_float3(vx[j], vy[j], vz[j]);
+                        float3 vij = vj - vi;
+
+                        float lapW = viscosityKernel(r, h,h9);
+                        float viscosityCoeff = visc;
+                        vforce += viscosityCoeff
+                            * mass[j]
+                            * vij
+                            / density[j]
+                            * lapW;
+                        //xsph
+                        float W = smoothingkernel(r, h, h9);
+                        float factor = (mass[j] / density[j]) * W;
+
+                        deltaV.x += factor * (vx[j] - vx[i]);
+                        deltaV.y += factor * (vy[j] - vy[i]);
+                        deltaV.z += factor * (vz[j] - vz[i]);
+
+                    }
+
+                }
+            }
+        }
+    }
+    ax[i] = (force.x + vforce.x) /*mass[i]*/;
+    ay[i] = (force.y + vforce.y) /*mass[i]*/;
+    az[i] = (force.z + vforce.z) /*mass[i]*/;
+    vx[i] += epsilon * deltaV.x;
+    vy[i] += epsilon * deltaV.y;
+    vz[i] += epsilon * deltaV.z;
 
 }
 
@@ -633,7 +668,6 @@ __global__ void computeDensity(
     int numParticles,
     float h,
     float cellSize,
-    const HashCell* hashTable,
     const float* px,
     const float* py,
     const float* pz,
@@ -642,7 +676,11 @@ __global__ void computeDensity(
     int hs,
     float rest_density,
     float h2,
-    float h9
+   
+    int* cellstart,
+    int* cellend,
+    int* particleindex,
+    float K_,float* neardensity,float pollycoef6,float spikycoef
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
@@ -653,7 +691,7 @@ __global__ void computeDensity(
 
 
     float rho = density[i];
-
+    float rhon = neardensity[i];
     int cx, cy, cz;
     getCell(xi, yi, zi, cellSize, cx, cy, cz);
 
@@ -663,8 +701,8 @@ __global__ void computeDensity(
     int cellsWithParticles = 0;
 
     // Debug for first particle
-    bool debug = (i == 0);
-   // bool debug = 0;
+   // bool debug = (i == 0);
+   bool debug = 0;
 
     //if (debug) {
     //    printf("\n=== DENSITY: Particle %d ===\n", i);
@@ -679,19 +717,22 @@ __global__ void computeDensity(
             for (int dx = -1; dx <= 1; dx++) {
                 unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
 
-                const HashCell& cell = hashTable[hash];
-                int count = cell.count;
+                int start = cellstart[hash];
+                int end = cellend[hash];
+                if (start == -1) continue;
+
+                
                 cellsChecked++;
 
-                if (count > 0) cellsWithParticles++;
+                if (start > 0) cellsWithParticles++;
 
                 /*  if (debug && count > 0) {
                      printf("  Neighbor cell (%d,%d,%d) hash=%u: %d particles\n",
                           cx + dx, cy + dy, cz + dz, hash, count);
                   }*/
 
-                for (int k = 0; k < count && k < MAX_PARTICLES_PER_CELL; k++) {
-                    int j = cell.particles[k];
+                for (int k = start; k < end; k++) {
+                    int j = particleindex[k];
 
                     if (j == i) continue;
 
@@ -702,7 +743,13 @@ __global__ void computeDensity(
 
                     if (r2 < h2) {
                         float r = sqrtf(r2);
-                        rho += mass[j] * densitykernel(r, h,h9);
+                        float v = h2 - r * r;
+                        float vcube = v * v * v;
+                        float d = pollycoef6 * vcube;//precomputed pollycoef6
+                        rho += mass[j] * d;
+                        float x = h - r;
+                        float nd = spikycoef * x * x * x;
+                        rhon += mass[j] * nd;
                         neighborCount++;
 
                         /* if (debug && neighborCount <= 5) {
@@ -723,7 +770,7 @@ __global__ void computeDensity(
     }
 
     density[i] = fmaxf(rho, 1e-6f);
-
+    neardensity[i] = fmaxf(rhon, 1e-6f);
     /*if (i == 0) {
         float W_zero = densitykernel(0.0f, h);
         printf("\n=== DENSITY DEBUG ===\n");
@@ -738,10 +785,11 @@ __global__ void computeDensity(
     }*/
 
     if (debug) {
-        printf("Final density: %.6f\n", rho);
         printf("Total: checked %d cells, %d had particles, found %d neighbors\n",
-            cellsChecked, cellsWithParticles, neighborCount);
-        printf("=== END DENSITY ===\n\n");
+           cellsChecked, cellsWithParticles, neighborCount);
+        printf("h: %2f , restdensity: %6f, k: %2f\n", h, rest_density, K_);
+        printf("final density after density function: %.6f\n", rho);
+       // printf("=== END DENSITY ===\n\n");
     }
 }
 
@@ -752,7 +800,7 @@ __global__ void computePressure(
     float k_,
     float restDensity,
     float* pressure,
-    const HashCell* hashTable,
+    
     float* px,
     float* py,
     float* pz,
@@ -766,7 +814,9 @@ __global__ void computePressure(
     float* vz,
    
     float st,
-    int hs,float h2,float h6
+    int hs,float h2
+    ,int* cellstart,int* cellend,
+    int* particleIndex,float* nearpressure,float* neardensity,float spikyGradv,float viscK,float pollycoef6
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -778,18 +828,21 @@ __global__ void computePressure(
 
     
     float p_i = pressure[i];
-
+    float pn_i=nearpressure[i];
     float3 force = { 0.0f, 0.0f, 0.0f };
     float3 visc = { 0.0f, 0.0f, 0.0f };
+    float3 deltaV = { 0.0f,0.0f,0.0f };
    
-
+    float epsilon = 0.1f;
     int cx, cy, cz;
     getCell(xi, yi, zi, cellSize, cx, cy, cz);
 
    
     int neighborCount = 0;
-
     bool debug = 0;
+   // bool debug = (i==0);
+                        float rho_i = density[i];
+                        float nrho_i = neardensity[i];
 
     /* if (debug) {
          printf("\n=== PRESSURE: Particle %d ===\n", i);
@@ -803,11 +856,12 @@ __global__ void computePressure(
             for (int dx = -1; dx <= 1; dx++) {
                 unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
 
-                const HashCell& cell = hashTable[hash];
-                int count = cell.count;
+                int start = cellstart[hash];
+                int end = cellend[hash];
+                if (start == -1) continue;
 
-                for (int k = 0; k < count && k < MAX_PARTICLES_PER_CELL; k++) {
-                    int j = cell.particles[k];
+                for (int k = start; k < end ; k++) {
+                    int j = particleIndex[k];
 
                     if (j == i) continue;
 
@@ -820,34 +874,73 @@ __global__ void computePressure(
                         float r = sqrtf(r2);
                       
                         float p_j = pressure[j];
+                        float np_j = nearpressure[j];
 
                         float3 dir = { dx_val / r, dy_val / r, dz_val / r };
 
                         neighborCount++;
 
-                        /*if (debug && neighborCount <= 3) {
+                      /*  if (debug && neighborCount <= 3) {
                             printf("  Neighbor %d: dist=%.3f rho=%.6f p=%.6f\n",
-                                j, r, rho_j, p_j);
+                                j, r, density[j], p_j);
                         }*/
+                        float rho_j = density[j];
+                        float nrho_j = neardensity[j];
+                        float x = h - r;
+                        float gradW = spikyGradv *x*x;//precomputed -gradw
+                        float ngradW = spikyGradv*x*x;
+                      
+                        float pressureterm = (p_i / (rho_i * rho_i) + p_j / (rho_j * rho_j));
+                        float npressureterm = (pn_i / (nrho_i * nrho_i) + np_j / (nrho_j * nrho_j));
+                       // float pressureterm = (p_i + p_j)/2;
+                       
 
-                        float gradW = spikyGrad(r, h,h6);
-                       // float pressureterm = (p_i / (rho_i * rho_i) + p_j / (rho_j * rho_j));
-                        float pressureterm = (p_i + p_j)/2;
-                        force += mass[j] * pressureterm * gradW * dir;
+                        // pressure accumulation difference with pos and neg signs
+                        // setting where they act kinda like water
+                        // 
+                        // 
+                        // 
+                        // -sign settings
+                        //r-d=0.1
+                        //k=1000
+                        //nk=2000
+                        //mass=1
+                        // as h increases particle act like thick fluid
+                        //as rest density is increase fluid becomes thick and attracts
+                        //high k result is thick fluid
+                        //motion is smooth and very thick like honey
 
+
+                        //no - sign settings 
+                        // only - for near pressure, postive attracts
+                        //r-d=1
+                        //k=100
+                        //nk=2000
+                        //mass=10
+                        //as h increaases particle becomes jittery they repel 
+                        //as rest density is incrreases particle distance themselves from others repulsion dominates
+                        //high k is very jittery ,even explodes,low k is kinda okkay but jitter at surface
+                        force += -mass[j] * pressureterm * gradW * dir;
+                        force += -mass[j] * npressureterm * ngradW * dir;
                         float3 vi = make_float3(vx[i], vy[i], vz[i]);
                         float3 vj = make_float3(vx[j], vy[j], vz[j]);
                         float3 vij = vj - vi;
 
-                        float lapW = viscosityKernel(r, h);
+                        float lapW = viscK * x;
                         float viscosityCoeff = st;
                         visc += viscosityCoeff
                             * mass[j]
                             * vij
                             / density[j]
                             * lapW;
+                        //combined pressure and xsph
+                        float v = h2 - r * r;
+                        float W = pollycoef6 * v*v*v;
+                        float factor = (mass[j] / density[j]) * W;
 
-                        
+                        deltaV.x += factor * (vx[j] - vx[i]);
+                        deltaV.y += factor * (vy[j] - vy[i]);
+                        deltaV.z += factor * (vz[j] - vz[i]);
 
 
 
@@ -856,11 +949,19 @@ __global__ void computePressure(
             }
         }
     }
-
-    ax[i] = (force.x + visc.x ) /*mass[i]*/;
-    ay[i] = (force.y + visc.y ) /*mass[i]*/;
-    az[i] = (force.z + visc.z ) /*mass[i]*/;
-
+    if (debug) {
+        printf(" pressure forces-\n x: %6f \n y: %6f \n z: %6f \n viscosity \n x: %6f \n y: %6f \n z %6f\n", force.x, force.y, force.z, visc.x, visc.y, visc.z);
+        printf("epsilon: %3f\n", epsilon);
+        printf("xsph values in deltaV \n x: %5f \n y: %5f \n y: %5f \n", deltaV.x,deltaV.y,deltaV.z);
+    }
+    //apply pressure
+    ax[i] += (force.x + visc.x );
+    ay[i] += (force.y + visc.y );
+    az[i] += (force.z + visc.z );
+    //apply xsph
+    vx[i] += epsilon * deltaV.x;
+    vy[i] += epsilon * deltaV.y;
+    vz[i] += epsilon * deltaV.z;
    
 }
 
@@ -869,11 +970,12 @@ __global__ void applyXSPH(
     float h,
     float cellSize,
 
-    const HashCell* hashTable,
+    
     const float* px, const float* py, const float* pz,
     const float* density,
     const float* mass,
-    float* vx, float* vy, float* vz, int hs,float h2,float h9
+    float* vx, float* vy, float* vz, int hs,float h2,float h9, int* cellstart, int* cellend,
+    int* particleIndex
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
@@ -881,7 +983,7 @@ __global__ void applyXSPH(
     float xi = px[i];
     float yi = py[i];
     float zi = pz[i];
-    float epsilon = 0.3f;
+    float epsilon = 0.1f;
     float3 deltaV = { 0.0f, 0.0f, 0.0f };
 
     int cx, cy, cz;
@@ -893,11 +995,11 @@ __global__ void applyXSPH(
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
-                const HashCell& cell = hashTable[hash];
-                int count = cell.count;
+                int start = cellstart[hash];
+                int end = cellend[hash];
 
-                for (int k = 0; k < count && k < MAX_PARTICLES_PER_CELL; k++) {
-                    int j = cell.particles[k];
+                for (int k = start; k < end ; k++) {
+                    int j = particleIndex[k];
                     if (j == i) continue;
 
                     float dx_val = xi - px[j];
@@ -918,78 +1020,74 @@ __global__ void applyXSPH(
             }
         }
     }
-
+    /*if (i == 0) { 
+        printf("epsilon: %3f\n", epsilon);
+        printf("xsph values in deltaV \n x: %5f \n y: %5f \n y: %5f \n", deltaV.x); }*/
     vx[i] += epsilon * deltaV.x;
     vy[i] += epsilon * deltaV.y;
     vz[i] += epsilon * deltaV.z;
 }
-__global__ void ppos(int n,float dt,float* px, float* py, float* pz, float* vx, float* vy, float* vz, float* ppx, float* ppy, float* ppz) {
-
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-
-    ppx[i] = px[i] + (vx[i] * dt);
-    ppy[i] = py[i] + (vy[i] * dt);
-    ppz[i] = pz[i] + (vz[i] * dt);
-
-
-}
 
 extern "C"
-void stepsph(int totalBodies, float dt, float h, float pressure, float rest_density,  float mx, float my, float mz, float maxx, float maxy, float maxz,float visc) {
+void stepsph(int totalBodies, float dt, float h, float pressure, float rest_density, float mx, float my, float mz, float maxx, float maxy, float maxz, float visc,float k_,float h2,
+float pollycoef6,float spikycoef,float gradv,float viscK,float sdensity,float ndensity
+    ) {
 
 
-    float h2 = h * h;
-    float h3 = h * h * h;
-    float h4 = h2 * h2;
-    float h6 = h3 * h3;
-    float h9 = h3 * h3 * h3;
     
 
+    cudaError_t err;
 
-
-    float d_cellsize = h * 1.5f;
+    float d_cellsize = h * 1.0f;//tweaak it gng
 
     buildDynamicGrid(totalBodies, d_cellsize, dposx, dposy, dposz);
-
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        printf("ERROR: Grid build failed: %s\n", cudaGetErrorString(err));
+    }
 
     int B = (totalBodies + THREADS - 1) / THREADS;
 
-    self_density << <B, THREADS >> > (totalBodies, h, dDensity, dMass,h9);
-    computeDensity << <B, THREADS >> > (totalBodies, h, d_cellsize, d_hashTable, dposx, dposy, dposz, dMass, dDensity, HASH_TABLE_SIZE, rest_density,h2,h9);
+    self_density << <B, THREADS >> > (totalBodies, h, dDensity, dMass,dnearDensity,sdensity,ndensity);
+   
+        computeDensity << <B, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dMass, dDensity, HASH_TABLE_SIZE, rest_density, h2, d_cellStart, d_cellEnd, d_particleIndex,k_,dnearDensity,pollycoef6,spikycoef);
+       
+    self_pressure << <B, THREADS >> > (totalBodies, pressure, rest_density, dDensity, dPressure,dnearPressure,dnearDensity,k_);
+   
+        computePressure << <B, THREADS >> > (totalBodies, h, d_cellsize, pressure, rest_density, dPressure, dposx, dposy, dposz, dDensity, dMass, daclx, dacly, daclz, dvelx, dvely, dvelz, visc, HASH_TABLE_SIZE, h2, d_cellStart, d_cellEnd, d_particleIndex,dnearPressure,dnearDensity,gradv,viscK,pollycoef6);
+       
 
-    self_pressure << <B, THREADS >> > (totalBodies, pressure, rest_density, dDensity, dPressure);
+       // applyXSPH << <B, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dDensity, dMass, dvelx, dvely, dvelz, HASH_TABLE_SIZE, h2, h9, d_cellStart, d_cellEnd, d_particleIndex);
+        
 
-    computePressure << <B, THREADS >> > (totalBodies, h, d_cellsize, pressure, rest_density, dPressure, d_hashTable, dposx, dposy, dposz, dDensity, dMass, daclx, dacly, daclz, dvelx, dvely, dvelz,visc,  HASH_TABLE_SIZE,h2,h6);
-    applyXSPH << <B, THREADS >> > (totalBodies, h, d_cellsize, d_hashTable, dposx, dposy, dposz, dDensity, dMass, dvelx, dvely, dvelz, HASH_TABLE_SIZE,h2,h9);
-
+  
+        //sphCompute << <B, THREADS >> > (totalBodies,h,d_cellsize,dposx,dposy,dposz,dvelx,dvely,dvelz,daclx,dacly,daclz,dDensity,dPressure,dMass,d_cellStart,d_cellEnd,d_particleIndex,pressure,rest_density,visc,h2,h6,h9,HASH_TABLE_SIZE);
     
+        
     
-    cudaDeviceSynchronize();
+   
 
 }
 /////////////////////////////////////////
 //heating
-__global__ void computeheat(int totalbodies, float dt, float hmulti, float cold, float* h, float* mass, int* r, int* g, int* b, int* br, int* bg, int* bb, float* vx, float* vy, float* vz,int rr,int gg,int bbbb) {
+__global__ void computeheat(int totalbodies, float dt, float hmulti, float cold, float* h, float* mass, int* r, int* g, int* b,  float* vx, float* vy, float* vz,int rr,int gg,int bbbb) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= totalbodies) return;
-    br[i] = rr;
-    bg[i] = gg;
-    bb[i] = bbbb;
+   
     float3 v = { vx[i],vy[i],vz[i] };
     float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
 
     float heat = speed * 0.5f;
-    heat += mass[i];
+   // heat += mass[i];
     h[i] += (heat * hmulti) * dt;
 
     h[i] *= expf(-cold * dt);
     h[i] = clamp(h[i], 0.0f, 100.0f);
     float t = clamp(h[i] / 100.0f, 0.0f, 1.0f);
     t = pow(t, 0.95f);
-    float bbr = (float)br[i];
-    float bbb = (float)bb[i];
-    float bbg = (float)bg[i];
+    float bbr = (float)rr;
+    float bbb = (float)gg;
+    float bbg = (float)bbbb;
 
     float R = lerp(bbr, 255.0f, t);
     float G = lerp(bbg, 0.0f, t);
@@ -1004,164 +1102,251 @@ __global__ void computeheat(int totalbodies, float dt, float hmulti, float cold,
 extern"C"
 void heating(int totalbodies, float dt, float hmulti, float cold,int r,int g,int b) {
     int B = (totalbodies + THREADS - 1) / THREADS;
-    computeheat << <B, THREADS >> > (totalbodies, dt, hmulti, cold, dHeat, dMass, dr, dg, db, dbr, dbg, dbb, dvelx, dvely, dvelz,r,g,b);
-    cudaDeviceSynchronize();
+    computeheat << <B, THREADS >> > (totalbodies, dt, hmulti, cold, dHeat, dMass, dr, dg, db, dvelx, dvely, dvelz,r,g,b);
+  
 }
 
 
 //update
-__global__ void updateKernel(float dt, int count, float cold, float MAX_HEAT, float* px, float* py, float* pz, float* vx, float* vy, float* vz, float* ax, float* ay, float* az, float* fx, float* fy, float* fz, float* mass, float* dens, float* pres,
-    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf, float* ox, float* oy, float* oz
+__global__ void updateKernel(float dt, int count, float cold,  float* px, float* py, float* pz, float* vx, float* vy, float* vz, float* ax, float* ay, float* az,
+    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf
 ) {
     // Vec3 acc_new;
 
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < count; i += blockDim.x * gridDim.x) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= count) return;
 
 
 
+    vx[i] += ax[i] * dt;
+    vy[i] += ay[i] * dt;
+    vz[i] += (az[i]) * dt;
+    vz[i] -= downf;
 
-        vx[i] += ax[i] * dt;
-        vy[i] += ay[i] * dt;
-        vz[i] += (az[i] ) * dt;
-        vz[i] -= downf;
+
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+    pz[i] += vz[i] * dt;
 
 
-        px[i] += vx[i] * dt;
-        py[i] += vy[i] * dt;
-        pz[i] += vz[i] * dt;
-
-        fx[i] = 0;
-        fy[i] = 0;
-        fz[i] = 0;
-        ax[i] = 0;
-        ay[i] = 0;
-        az[i] = 0;
+    ax[i] = 0;
+    ay[i] = 0;
+    az[i] = 0;
 
 
 
-        const float friction = 0.1f;        // Surface friction coefficient
-        const float damping = 0.1f;        // Velocity damping on contact
+    const float friction = 0.1f;        // Surface friction coefficient
+    const float damping = 0.1f;        // Velocity damping on contact
 
 
-        // ---- X bounds ----
-        if (px[i] <= minX) {
-            px[i] = minX;
-            float normalVel = vx[i];
+    // ---- X bounds ----
+    if (px[i] <= minX) {
+        px[i] = minX;
+        float normalVel = vx[i];
 
-            if (normalVel < 0.0f) {
-                // Normal component (bounce)
-                vx[i] = -normalVel * restitution;
+        if (normalVel < 0.0f) {
+            // Normal component (bounce)
+            vx[i] = -normalVel * restitution;
 
-                // Tangential friction
-                float tangentSpeed = sqrtf(vy[i] * vy[i] + vz[i] * vz[i]);
-                if (tangentSpeed > 1e-6f) {
-                    float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
-                    vy[i] *= (1.0f - frictionMag / tangentSpeed);
-                    vz[i] *= (1.0f - frictionMag / tangentSpeed);
-                }
+            // Tangential friction
+            float tangentSpeed = sqrtf(vy[i] * vy[i] + vz[i] * vz[i]);
+            if (tangentSpeed > 1e-6f) {
+                float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
+                vy[i] *= (1.0f - frictionMag / tangentSpeed);
+                vz[i] *= (1.0f - frictionMag / tangentSpeed);
             }
         }
-        else if (px[i] >= maxX) {
-            px[i] = maxX;
-            float normalVel = vx[i];
+    }
+    else if (px[i] >= maxX) {
+        px[i] = maxX;
+        float normalVel = vx[i];
 
-            if (normalVel > 0.0f) {
-                vx[i] = -normalVel * restitution;
+        if (normalVel > 0.0f) {
+            vx[i] = -normalVel * restitution;
 
-                float tangentSpeed = sqrtf(vy[i] * vy[i] + vz[i] * vz[i]);
-                if (tangentSpeed > 1e-6f) {
-                    float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
-                    vy[i] *= (1.0f - frictionMag / tangentSpeed);
-                    vz[i] *= (1.0f - frictionMag / tangentSpeed);
-                }
+            float tangentSpeed = sqrtf(vy[i] * vy[i] + vz[i] * vz[i]);
+            if (tangentSpeed > 1e-6f) {
+                float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
+                vy[i] *= (1.0f - frictionMag / tangentSpeed);
+                vz[i] *= (1.0f - frictionMag / tangentSpeed);
             }
         }
-
-        // ---- Y bounds ----
-        if (py[i] <= minY) {
-            py[i] = minY;
-            float normalVel = vy[i];
-
-            if (normalVel < 0.0f) {
-                vy[i] = -normalVel * restitution;
-
-                float tangentSpeed = sqrtf(vx[i] * vx[i] + vz[i] * vz[i]);
-                if (tangentSpeed > 1e-6f) {
-                    float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
-                    vx[i] *= (1.0f - frictionMag / tangentSpeed);
-                    vz[i] *= (1.0f - frictionMag / tangentSpeed);
-                }
-            }
-        }
-        else if (py[i] >= maxY) {
-            py[i] = maxY;
-            float normalVel = vy[i];
-
-            if (normalVel > 0.0f) {
-                vy[i] = -normalVel * restitution;
-
-                float tangentSpeed = sqrtf(vx[i] * vx[i] + vz[i] * vz[i]);
-                if (tangentSpeed > 1e-6f) {
-                    float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
-                    vx[i] *= (1.0f - frictionMag / tangentSpeed);
-                    vz[i] *= (1.0f - frictionMag / tangentSpeed);
-                }
-            }
-        }
-
-        // ---- Z bounds (floor/ceiling) ----
-        if (pz[i] <= minZ) {
-            pz[i] = minZ;
-            float normalVel = vz[i];
-
-            if (normalVel < 0.0f) {
-                vz[i] = -normalVel * restitution;
-
-                // Extra friction on floor (prevents sliding)
-                float tangentSpeed = sqrtf(vx[i] * vx[i] + vy[i] * vy[i]);
-                if (tangentSpeed > 1e-6f) {
-                    float floorFriction = friction * 2.0f; // Stronger floor friction
-                    float frictionMag = fminf(floorFriction * fabsf(normalVel), tangentSpeed);
-                    vx[i] *= (1.0f - frictionMag / tangentSpeed);
-                    vy[i] *= (1.0f - frictionMag / tangentSpeed);
-                }
-
-                // Stop tiny vibrations (resting particles)
-                if (fabsf(vz[i]) < 0.1f) {
-                    vz[i] = 0.0f;
-                    vx[i] *= damping;
-                    vy[i] *= damping;
-                }
-            }
-        }
-        else if (pz[i] >= maxZ) {
-            pz[i] = maxZ;
-            float normalVel = vz[i];
-
-            if (normalVel > 0.0f) {
-                vz[i] = -normalVel * restitution;
-
-                float tangentSpeed = sqrtf(vx[i] * vx[i] + vy[i] * vy[i]);
-                if (tangentSpeed > 1e-6f) {
-                    float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
-                    vx[i] *= (1.0f - frictionMag / tangentSpeed);
-                    vy[i] *= (1.0f - frictionMag / tangentSpeed);
-                }
-            }
-        }
-
     }
 
+    // ---- Y bounds ----
+    if (py[i] <= minY) {
+        py[i] = minY;
+        float normalVel = vy[i];
 
+        if (normalVel < 0.0f) {
+            vy[i] = -normalVel * restitution;
 
+            float tangentSpeed = sqrtf(vx[i] * vx[i] + vz[i] * vz[i]);
+            if (tangentSpeed > 1e-6f) {
+                float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
+                vx[i] *= (1.0f - frictionMag / tangentSpeed);
+                vz[i] *= (1.0f - frictionMag / tangentSpeed);
+            }
+        }
+    }
+    else if (py[i] >= maxY) {
+        py[i] = maxY;
+        float normalVel = vy[i];
+
+        if (normalVel > 0.0f) {
+            vy[i] = -normalVel * restitution;
+
+            float tangentSpeed = sqrtf(vx[i] * vx[i] + vz[i] * vz[i]);
+            if (tangentSpeed > 1e-6f) {
+                float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
+                vx[i] *= (1.0f - frictionMag / tangentSpeed);
+                vz[i] *= (1.0f - frictionMag / tangentSpeed);
+            }
+        }
+    }
+
+    // ---- Z bounds (floor/ceiling) ----
+    if (pz[i] <= minZ) {
+        pz[i] = minZ;
+        float normalVel = vz[i];
+
+        if (normalVel < 0.0f) {
+            vz[i] = -normalVel * restitution;
+
+            // Extra friction on floor (prevents sliding)
+            float tangentSpeed = sqrtf(vx[i] * vx[i] + vy[i] * vy[i]);
+            if (tangentSpeed > 1e-6f) {
+                float floorFriction = friction * 2.0f; // Stronger floor friction
+                float frictionMag = fminf(floorFriction * fabsf(normalVel), tangentSpeed);
+                vx[i] *= (1.0f - frictionMag / tangentSpeed);
+                vy[i] *= (1.0f - frictionMag / tangentSpeed);
+            }
+
+            // Stop tiny vibrations (resting particles)
+            if (fabsf(vz[i]) < 0.1f) {
+                vz[i] = 0.0f;
+                vx[i] *= damping;
+                vy[i] *= damping;
+            }
+        }
+    }
+    else if (pz[i] >= maxZ) {
+        pz[i] = maxZ;
+        float normalVel = vz[i];
+
+        if (normalVel > 0.0f) {
+            vz[i] = -normalVel * restitution;
+
+            float tangentSpeed = sqrtf(vx[i] * vx[i] + vy[i] * vy[i]);
+            if (tangentSpeed > 1e-6f) {
+                float frictionMag = fminf(friction * fabsf(normalVel), tangentSpeed);
+                vx[i] *= (1.0f - frictionMag / tangentSpeed);
+                vy[i] *= (1.0f - frictionMag / tangentSpeed);
+            }
+        }
+    }
 
 }
+
+
+
+
+
 extern "C"
 void updatebodies(float dt, int count, float cold, float MAX_HEAT, float minx, float maxx, float miny, float maxy, float minz, float maxz, float res, float downf) {
 
     int B = (count + THREADS - 1) / THREADS;
-    updateKernel << < B, THREADS >> > (dt, count, cold, MAX_HEAT, dposx, dposy, dposz, dvelx, dvely, dvelz, daclx, dacly, daclz, dpx, dpy, dpz, dMass, dDensity, dPressure, minx, maxx, miny, maxy, minz, maxz, res, downf, dold_aclx, dold_acly, dold_aclz);
-    cudaDeviceSynchronize();
+    updateKernel << < B, THREADS >> > (dt, count, cold,  dposx, dposy, dposz, dvelx, dvely, dvelz, daclx, dacly, daclz, minx, maxx, miny, maxy, minz, maxz, res, downf);
+   
 
 
+}
+
+__global__ void registerKernel(int n,float h,
+    float Size,float Mass,
+    int R,int G,int B,
+    float maxX,float maxY,float maxz,
+    float minX,float minY,float minZ,
+    float* Px, float* Py, float* Pz,
+    float* vx, float* vy, float* vz,
+    float* ax, float* ay, float* az,
+    float* size,
+    float* mass,
+    int* is,
+    int* r, int* g, int* b,
+    float* heat,
+    float* density,
+    float* pressure
+
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    float x, y, z;
+    float particle_spacing = h * 0.6f;
+
+    int particles_per_side = (int)ceil(cbrt((float)n));
+    int maxXcount = (int)((maxX - minX) / particle_spacing);
+    int maxYcount = (int)((maxY - minY) / particle_spacing);
+    int maxZcount = (int)((maxz - minZ) / particle_spacing);
+
+    // Use cubic grid but respect physical limits
+    int nx = fminf(particles_per_side, fmaxf(1, maxXcount));
+    int ny = fminf(particles_per_side, fmaxf(1, maxYcount));
+    int nz = fminf(particles_per_side, fmaxf(1, maxZcount));
+
+   //int nx = max(1, int((maxX - minX) / particle_spacing));
+   //int ny = max(1, int((maxY - minY) / particle_spacing));
+   //int nz = ceil(float(n) / (nx * ny));
+
+    
+    //// Convert flattened index to 3D grid coordinates
+    int ix = i % nx;
+    int iy = (i / nx) % ny;
+    int iz = i / (nx * ny);
+
+    // Calculate grid dimensions
+    float gridSizeX = (nx - 1) * particle_spacing;
+    float gridSizeY = (ny - 1) * particle_spacing;
+    float gridSizeZ = (nz - 1) * particle_spacing;
+
+    // Calculate starting position with half particle spacing offset from edges
+    float startX = minX + (maxX - minX - gridSizeX) * 0.5f;
+    float startY = minY + (maxY - minY - gridSizeY) * 0.5f;
+    float startZ = maxz - particle_spacing * 1.5f;  // Offset from top
+
+    // Generate grid
+    x = startX + ix * particle_spacing;
+    y = startY + iy * particle_spacing;
+    z = startZ - iz * particle_spacing;  // Start at maxZ with offset, go downward
+
+    Px[i] = x;
+    Py[i] = y;
+    Pz[i] = z;
+
+    vx[i] = 0.0f;
+    vy[i] = 0.0f;
+    vz[i] = 0.0f;
+
+    ax[i] = 0.0f;
+    ay[i] = 0.0f;
+    az[i] = 0.0f;
+
+    size[i] = Size;
+    mass[i] = Mass;
+    density[i] = 0.0f;
+    pressure[i] = 0.0f;
+    is[i] = 0;
+    r[i] = R;
+    g[i] = G;
+    b[i] = B;
+
+    heat[i] = 0.0f;
+}
+extern "C" void registerBodies(int n,float h,float Size,float Mass,int R,int G,int B, float maxX, float maxY, float maxz, float minX, float minY, float minZ ) {
+    int Block = (n + THREADS - 1) / THREADS;
+    registerKernel << < Block, THREADS >> > (n,h,Size,Mass,R,G,B,maxX,maxY,maxz,minX,minY,minZ,
+                                                 dposx,dposy,dposz,dvelx,dvely,dvelz,daclx,dacly,daclz,dSize,dMass,dIscenter,dr,dg,db,dHeat,dDensity,dPressure
+        );
+   
 }

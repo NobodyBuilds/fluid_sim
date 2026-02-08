@@ -188,7 +188,7 @@ void main() {
 
     // ---- lighting ----
    float diff = max(dot(normal, uLightDir), 0.20);
-   float light =   1.1 + 0.9 * diff ;
+   float light =   0.4 + 0.6 * diff ;
 
     vec3 baseColor = vColor.rgb  * light  ;
 
@@ -219,7 +219,7 @@ if( r2>0.1){
 blur=1.0 - (r2 -0.1);}
 if(blur <=0){
 blur =0.1;}
-FragColor = vec4(baseColor  ,blur);
+FragColor = vec4(baseColor  ,1.0);
 }
 
 
@@ -360,11 +360,11 @@ float simspeed = 1.0f;
 
 //particle settings
 
-int totalBodies = 10000;
-float size = 1.5f;
-float mmass = 10.0f;
+int totalBodies = 1000;
+float size = 1.0f;
+float mmass = 1.0f;
 
-
+int A = 0;
 
 
 int substeps = 1;
@@ -386,199 +386,80 @@ float wx, wy, wz;
 float h = 3.5f;
 float cellsize = h*1.5f;
 float h2 = h * h;
-float rest_density = 100.0f;//density-idk
-float pressure = 200.0f;//pressure-idk--K
-
-float visc = 0.01f;
+float rest_density = 0.10f;//density-idk
+float pressure = 1000.0f;//pressure-idk--K
+float nearpressure = 2000.0f;
+float visc = 0.001f;
 bool heateffect = true;
 
-float downf = 2.0f;
-
+float downf = 1.50f;
+float pi = 3.14159265358979323846f;
 
 bool addparticle = false;
-//
- 
+//kernels
+float pollycoef6;
+float spikycoef;
+float Sdensity;
+float ndensity;
+float spikygradv;
+float viscK;
+//arrays 
 std::vector<float> posx, posy, posz;
-std::vector<float> aclx, acly, aclz;
-std::vector<float> old_aclx, old_acly, old_aclz;
-std::vector<float> velx, vely, velz;
-std::vector<float> forcex, forcey, forcez;
+
 std::vector<float> Size;
-std::vector<float> Mass;
-std::vector<int> Iscenter;
+
 std::vector<int> r, g, b;
-std::vector<int> br, bg, bb;
-std::vector<float> Heat;
-std::vector<float> Density;
-std::vector<float> Pressure;
+
+
+
 
 float minX = -50.0f, maxX = 50.0f;
 float minY = -50.0f, maxY = 50.0f;
 float restitution = 0.8f;
 float minZ = 0.0f;
 float maxz = 100.0f;
-float as = 1.0f;
-float st = 1.0f;
-//////////////////////////////////////
-//register particles
-void registerBody() {
-  
-
-    for (int i = 0; i < totalBodies; ++i) {
-        
-        float m = mmass;
-		float s = size;
-        float is = 0;
-
-        float x = 0, y = 0, z = 0;
-        float vx = 0, vy = 0, vz = 0;
-        float particle_spacing = h*0.6f;
-
-        int particles_per_side = (int)ceil(cbrt((float)totalBodies));
-        int maxXcount = (int)((maxX - minX) / particle_spacing);
-        int maxYcount = (int)((maxY - minY) / particle_spacing);
-        int maxZcount = (int)((maxz - minZ) / particle_spacing);
-
-        // Use cubic grid but respect physical limits
-        int nx = std::min(particles_per_side, std::max(1, maxXcount));
-        int ny = std::min(particles_per_side, std::max(1, maxYcount));
-        int nz = std::min(particles_per_side, std::max(1, maxZcount));
-
-        // Convert flattened index to 3D grid coordinates
-        int ix = i % nx;
-        int iy = (i / nx) % ny;
-        int iz = i / (nx * ny);
-
-        // Calculate grid dimensions
-        float gridSizeX = (nx - 1) * particle_spacing;
-        float gridSizeY = (ny - 1) * particle_spacing;
-        float gridSizeZ = (nz - 1) * particle_spacing;
-
-        // Calculate starting position with half particle spacing offset from edges
-        float startX = (minX) + particle_spacing * maxX/2;
-        float startY = (minY) + particle_spacing * maxY/2;
-        float startZ = maxz - particle_spacing * 1.5f;  // Offset from top
-
-        // Generate grid
-        x = startX + ix * particle_spacing ;
-        y = startY + iy * particle_spacing ;
-        z = startZ - iz * particle_spacing;  // Start at maxZ with offset, go downward
-
-        float d = rest_density;   // NOT 0
-        float p = 0.0f;
-       
-       
-        int Br = 255;
-        int Bg = 255;
-        int Bb = 255;
-
-		posx.push_back(x);
-        posy.push_back(y);
-        posz.push_back(z);
-        velx.push_back(vx);
-        vely.push_back(vy);
-        velz.push_back(vz);
-        aclx.push_back(0.0f);
-        acly.push_back(0.0f);
-        aclz.push_back(0.0f);
-        old_aclx.push_back(0.0f);
-        old_acly.push_back(0.0f);
-        old_aclz.push_back(0.0f);
-        forcex.push_back(0.0f);
-        forcey.push_back(0.0f);
-        forcez.push_back(0.0f);
-        Size.push_back(s);
-        Mass.push_back(m);
-        Iscenter.push_back(is);
-        br.push_back(Br);
-        bg.push_back(Bg);
-        bb.push_back(Bb);
-        r.push_back(br[i]);
-        g.push_back(bg[i]);
-        b.push_back(bb[i]);
-        Heat.push_back(0.0f);
-        Density.push_back(d);
-		Pressure.push_back(p);
-    }
-
-}
-inline float randf(float min, float max) {
-    return min + (max - min) * (float(rand()) / float(RAND_MAX));
-}
-
-void restartSimulation() {
-	posx.clear();
-	posy.clear();
-	posz.clear();
-	velx.clear();
-	vely.clear();
-    velz.clear();
-	aclx.clear();
-	acly.clear();
-	aclz.clear();
-	old_aclx.clear();
-	old_acly.clear();
-	old_aclz.clear();
-	forcex.clear();
-	forcey.clear();
-	forcez.clear();
-	Size.clear();
-	Mass.clear();
-	Iscenter.clear();
-	r.clear();
-	g.clear();
-	b.clear();
-	br.clear();
-	bg.clear();
-	bb.clear();
-	Heat.clear();
-	Density.clear();
-	Pressure.clear();
-  
-    freeDynamicGrid();
-    freegpu();
-    registerBody();
-	initgpu(posx.size());
-	initDynamicGrid(posx.size());
-  
-    copyarray(posx.size(),
-        posx.data(),
-        posy.data(),
-        posz.data(),
-        velx.data(),
-        vely.data(),
-        velz.data(),
-        aclx.data(),
-        acly.data(),
-        aclz.data(),
-        old_aclx.data(),
-        old_acly.data(),
-        old_aclz.data(),
-        forcex.data(),
-        forcey.data(),
-        forcez.data(),
-        Size.data(),
-        Mass.data(),
-        Iscenter.data(),
-        r.data(),
-        g.data(),
-        b.data(),
-        br.data(),
-        bg.data(),
-        bb.data(),
-        Heat.data(),
-        Density.data(),
-        Pressure.data()
-
-
-
-    );
-
-    }
 
 int rc = 255;
 int gc = 255;
 int bc = 255;
+//////////////////////////////////////
+//register particles
+void setcount() {
+    for (int i = 0; i < totalBodies; i++) {
+        posx.push_back(100.0f);
+        posy.push_back(100.0f);
+        posz.push_back(100.0f);
+
+        Size.push_back(size);
+        r.push_back(rc);
+        g.push_back(gc);
+        b.push_back(bc);
+    }
+}
+
+void restartSimulation() {
+	
+    posx.clear();
+    posy.clear();
+    posz.clear();
+
+    Size.clear();
+    r.clear();
+    g.clear();
+    b.clear();
+  
+    freeDynamicGrid();
+    freegpu();
+    setcount();
+	initgpu(posx.size());
+	initDynamicGrid(posx.size());
+    registerBodies(posx.size(), h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+  
+    
+
+    }
+
+
 void updatePhysics(float dt) {
     float subDt = dt / (float)substeps;
 
@@ -595,7 +476,7 @@ void updatePhysics(float dt) {
         if (colisionFun == true) {
 
 
-            stepsph(posx.size(), subDt, h, pressure, rest_density,minX,minY,minZ,maxX,maxY,maxz,visc);
+            stepsph(posx.size(), subDt, h, pressure, rest_density,minX,minY,minZ,maxX,maxY,maxz,visc,nearpressure,h2,pollycoef6,spikycoef,spikygradv,viscK,Sdensity,ndensity);
 
         }
         if (heateffect == true) {
@@ -661,11 +542,27 @@ void initBoundingBox() {
 
     glBindVertexArray(0);
 }
+void calcKernels() {
+    float h2 = h * h;
+    float h3 = h * h * h;
+   // float h4 = h2 * h2;
+    float h6 = h3 * h3;
+    float h9 = h3 * h3 * h3;
+
+    
+    pollycoef6 = 315.0f / (64.0f * pi * h9);
+    Sdensity = pollycoef6 * h6;//self density at r=0
+    spikycoef = 15.0f / (pi * h6);
+    ndensity = spikycoef * h3;//near self density at r=0
+    spikygradv = -45 / (pi * h6);
+    viscK = 45 / (pi * h6);
+}
+
 
 void drawAll() {
 
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND); // IMPORTANT: no transparency
+    glDisable(GL_BLEND); // IMPORTANT: no transparency
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const int VERTS_PER_BODY = 3;
@@ -935,7 +832,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
 
 
-    GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "N-Body Simulation - OpenGL", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "fluid Simulation - OpenGL", nullptr, nullptr);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     if (!window) { std::cerr << "Failed create window\n"; glfwTerminate(); return -1; }
     glfwMakeContextCurrent(window);
@@ -983,43 +880,15 @@ int main() {
     const float targetFPS = 60.0f;
     const float upperThreshold = 65.0f;
     const float lowerThreshold = 55.0f;
+    calcKernels();
+    setcount();
     initBoundingBox();
-    registerBody();
     initgpu(posx.size());
-    copyarray(posx.size(),
-        posx.data(),
-        posy.data(),
-        posz.data(),
-        velx.data(),
-        vely.data(),
-        velz.data(),
-        aclx.data(),
-        acly.data(),
-        aclz.data(),
-        old_aclx.data(),
-        old_acly.data(),
-        old_aclz.data(),
-        forcex.data(),
-        forcey.data(),
-        forcez.data(),
-        Size.data(),
-        Mass.data(),
-        Iscenter.data(),
-        r.data(),
-        g.data(),
-        b.data(),
-        br.data(),
-        bg.data(),
-        bb.data(),
-        Heat.data(),
-        Density.data(),
-        Pressure.data()
-
-
-
-    );
-
+    
 	initDynamicGrid(posx.size());
+    registerBodies(posx.size(), h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+   
+
    
     
     double lastTime = glfwGetTime();
@@ -1058,30 +927,42 @@ int main() {
         ImGui::SliderFloat("color gen speed", &hmulti,0.1f,20.0f);
       
        
-        ImGui::SliderFloat("smoothing", &h, 0.0f, 20.0f);
+        ImGui::SliderFloat("smoothing", &h, 0.0f, 20.0f); {
+            calcKernels();
+        }
 
         ImGui::InputFloat("rest density", &rest_density);
-       // ImGui::SliderFloat("rest density", &rest_density,0.001f,100.0f);
+       // ImGui::SliderFloat("rest density", &rest_density,0.01f,10.0f);
         ImGui::InputFloat("pressure f", &pressure);
-       // ImGui::SliderFloat("pressure f", &pressure,0.001f,1000.0f);
-       // ImGui::SliderFloat("density multiplier", &densitymultiplier,0.001f,10.0f);
+        //ImGui::SliderFloat("pressure f", &pressure,0.001f,1000.0f);
+        ImGui::InputFloat("near pressure multiplier", &nearpressure);
         
         ImGui::InputFloat("viscosity", &visc);
       
 
        
-        ImGui::SliderFloat("G", &downf,0.0f,1000.0f);
+        ImGui::SliderFloat("G", &downf,0.0f,100.0f);
         ImGui::InputFloat("res", &restitution);
     
-        ImGui::SliderFloat("boundx", &maxX, 1.0f, 500.0f); {
+        ImGui::SliderFloat("x", &maxX, 1.0f, 500.0f); {
 
-            minX = -maxX;
+            
             initBoundingBox();
         };
-        ImGui::SliderFloat("boundy", &maxY,1.0f,500.0f);
+        ImGui::SliderFloat("-x", &minX, -1.0f, -500.0f); {
+
+            
+            initBoundingBox();
+        };
+        ImGui::SliderFloat("y", &maxY,1.0f,500.0f);
         {
 
-            minY = -maxY;
+            
+            initBoundingBox();
+        }ImGui::SliderFloat("-y", &minY,-1.0f,-500.0f);
+        {
+
+            
             initBoundingBox();
         }
       
@@ -1091,6 +972,8 @@ int main() {
 
             restartSimulation();
         }
+        ImGui::RadioButton("seperate" ,&A, 1);
+        ImGui::RadioButton("combined" ,&A, 0);
         ImGui::SliderInt("color r", &rc,0,255);
         ImGui::SliderInt("color g", &gc,0,255);
         ImGui::SliderInt("color b", &bc,0,255);
