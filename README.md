@@ -4,12 +4,20 @@ A **high‑performance Smoothed Particle Hydrodynamics (SPH)** simulation built 
 
 This project focuses on **real‑time fluid physics**, tunable physical parameters, and scalability for thousands of particles — designed for experimentation, learning, and performance.
 
+<img width="749" height="373" alt="Screenshot 2026-02-12 222005" src="https://github.com/user-attachments/assets/60f002f7-3f23-4da0-a18b-789749b212a9" />
+
+
+<img width="822" height="444" alt="Screenshot 2026-02-12 221501" src="https://github.com/user-attachments/assets/d614d5bb-d022-42aa-8c40-82fb5c58ec28" />
+
+
+
 ---
 
 ## 🚀 Features
 
 * ⚡ **GPU‑accelerated SPH (CUDA)**
 * 🧠 **Spatial grid / hashing** for fast neighbor lookup
+
 * 💧 Realistic **pressure, density, viscosity & surface tension**
 * 📦 Configurable **bounding box with friction & damping**
 * 🧪 Fully **tunable simulation parameters**
