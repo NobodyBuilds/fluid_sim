@@ -4,6 +4,12 @@ A **real time Smoothed Particle Hydrodynamics (SPH) fluid ** simulation built fo
 
 This project focuses on **real‑time fluid physics**, tunable physical parameters, and scalability for thousands of particles — designed for experimentation, learning, and performance.
 
+
+## notice
+not perfect yet!
+so expect errors or bugs and feel free to give feedback
+
+
 <img width="749" height="373" alt="Screenshot 2026-02-12 222005" src="https://github.com/user-attachments/assets/60f002f7-3f23-4da0-a18b-789749b212a9" />
 
 
@@ -12,6 +18,9 @@ This project focuses on **real‑time fluid physics**, tunable physical paramete
 
 
 ---
+## comtrols
+wasd for camera movement
+shift and space to change height movement
 
 ## 🚀 Features
 
