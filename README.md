@@ -170,6 +170,4 @@ Open‑source for learning & experimentation. Modify freely.
 Built with passion for **fluid physics, GPU compute, and simulation engineering**.
 
 feel free to contibute 
-* issues
 
-- low neibhor count
