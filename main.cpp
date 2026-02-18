@@ -105,43 +105,6 @@ GLuint bboxProgram = 0;
 GLuint bboxVAO = 0;
 GLuint bboxVBO = 0;
 
-const char* vertexShaderSource = R"glsl(
-#version 330 core
-
-layout(location = 0) in vec3 inCenterWorld;
-layout(location = 1) in float inRadius;
-layout(location = 2) in vec4 inColor;
-layout(location = 3) in vec2 inOffset;
-layout(location = 4) in float inHeat;   // b.heat ∈ [0,100]
-
-uniform mat4 uProj;
-uniform mat4 uView;
-uniform vec3 uCameraPos;
-
-out vec4 vColor;
-out vec2 vOffset;
-out float vHeat;
-out vec3 vworld;
-
-void main() {
-    vec3 right = vec3(uView[0][0], uView[1][0], uView[2][0]);
-    vec3 up    = vec3(uView[0][1], uView[1][1], uView[2][1]);
-
-    vec3 worldPos =
-        inCenterWorld +
-        (right * inOffset.x + up * inOffset.y) * inRadius;
-
-    gl_Position = uProj * uView * vec4(worldPos, 1.0);
-
-    vColor = inColor;
-    vOffset = inOffset; // ✅ FIXED
- vHeat   = inHeat;
-vworld = uCameraPos;
-}
-
-
-)glsl";
-
 const char* boxvert = R"glsl(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -165,6 +128,46 @@ void main() {
 
 
 )glsl";
+
+const char* vertexShaderSource = R"glsl(
+#version 330 core
+
+layout(location = 0) in vec3 inCenterWorld;
+layout(location = 1) in float inRadius;
+layout(location = 2) in vec4 inColor;
+layout(location = 3) in vec2 inOffset;
+layout(location = 4) in float inHeat;   // b.heat ∈ [0,100]
+
+uniform mat4 uProj;
+uniform mat4 uView;
+uniform vec3 uCameraPos;
+
+out vec4 vColor;
+out vec2 vOffset;
+out float vHeat;
+out vec3 vworld;
+out vec3 vpos;
+void main() {
+    vec3 right = vec3(uView[0][0], uView[1][0], uView[2][0]);
+    vec3 up    = vec3(uView[0][1], uView[1][1], uView[2][1]);
+
+    vec3 worldPos =
+        inCenterWorld +
+        (right * inOffset.x + up * inOffset.y) * inRadius;
+
+    gl_Position = uProj * uView * vec4(worldPos, 1.0);
+
+    vColor = inColor;
+    vOffset = inOffset; // ✅ FIXED
+ vHeat   = inHeat;
+vworld = uCameraPos;
+vpos=worldPos;
+}
+
+
+)glsl";
+
+
 const char* fragmentShaderSource = R"glsl(
 #version 330 core
 
@@ -172,6 +175,7 @@ in vec2 vOffset;
 in vec4 vColor;
 in float vHeat;
 in vec3 vworld;
+in vec3 vpos;
 out vec4 FragColor;
 
 // direction TOWARDS the light (normalized)
@@ -189,37 +193,18 @@ void main() {
     // ---- lighting ----
    float diff = max(dot(normal, uLightDir), 0.20);
    float light =   0.4 + 0.6 * diff ;
+float depth=length(vpos -vworld);
+float depthFade = 1.0 - exp(-depth / 150.0);
+    vec3 baseColor = vColor.rgb * light  ;
 
-    vec3 baseColor = vColor.rgb  * light  ;
-
-
-  
-   /*// edge softness (screen-space, anti-aliased)
-    float edge = 1.0 - smoothstep(
-        0.9,
-        1.0,
-        r2 + fwidth(r2) * 5.0
-    );
-
-    // heat-controlled blur strength
-    float blur = clamp(vHeat, 0.0, 1.0);
-
-    // glow color (slightly hotter tint)
-    vec3 glowColor = baseColor * (1.2 + blur);
-
-    // mix sharp core with soft edge
-    vec3 finalColor = mix(glowColor, baseColor, edge);
-
-    // alpha fades softly at edges
-    float alpha = edge;
-
-    FragColor = vec4(finalColor, alpha);*/
 float blur= 1.0f;
 if( r2>0.1){
 blur=1.0 - (r2 -0.1);}
-if(blur <=0){
-blur =0.1;}
-FragColor = vec4(baseColor  ,1.0);
+if(blur <=0)discard;
+
+  
+   
+FragColor = vec4(baseColor  ,1.0f);
 }
 
 
@@ -360,9 +345,10 @@ float simspeed = 1.0f;
 
 //particle settings
 
-int totalBodies = 1000;
+int totalBodies = 20000;
+int count = totalBodies;
 float size = 1.0f;
-float mmass = 1.0f;
+float mmass = 10.0f;
 
 int A = 0;
 
@@ -381,20 +367,21 @@ float hmulti = 15.0f;
 //world cords
 float wx, wy, wz;
 
+bool nopause = true;
 
 //sph variables
 float h = 3.5f;
 float cellsize = h*1.5f;
 float h2 = h * h;
-float rest_density = 0.10f;//density-idk
+float rest_density = 2.0f;//density-idk
 float pressure = 1000.0f;//pressure-idk--K
-float nearpressure = 2000.0f;
-float visc = 0.001f;
+float nearpressure = 5000.0f;
+float visc = 5.0f;
 bool heateffect = true;
 
 float downf = 1.50f;
 float pi = 3.14159265358979323846f;
-
+int flowcount = 5;
 bool addparticle = false;
 //kernels
 float pollycoef6;
@@ -411,19 +398,18 @@ std::vector<float> Size;
 std::vector<int> r, g, b;
 
 
+int star = 0;
 
-
-float minX = -50.0f, maxX = 50.0f;
+float minX = -50.0f, maxX = 250.0f;
 float minY = -50.0f, maxY = 50.0f;
 float restitution = 0.8f;
 float minZ = 0.0f;
 float maxz = 100.0f;
 
-int rc = 255;
-int gc = 255;
+int rc = 25;
+int gc = 50;
 int bc = 255;
 //////////////////////////////////////
-//register particles
 void setcount() {
     for (int i = 0; i < totalBodies; i++) {
         posx.push_back(100.0f);
@@ -437,6 +423,8 @@ void setcount() {
     }
 }
 
+//register particles
+
 void restartSimulation() {
 	
     posx.clear();
@@ -447,65 +435,41 @@ void restartSimulation() {
     r.clear();
     g.clear();
     b.clear();
-  
     freeDynamicGrid();
     freegpu();
     setcount();
-	initgpu(posx.size());
+    initgpu(posx.size());
 	initDynamicGrid(posx.size());
     registerBodies(posx.size(), h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
   
     
 
     }
-
-
 void updatePhysics(float dt) {
     float subDt = dt / (float)substeps;
 
 
     for (int step = 0; step < substeps; step++) {
         
-        if (addparticle == true) {
-           // addparticles(totalBodies,maxz,size,mmass);
-        }
+       
+        
+        
+      
+
         
 
-      
-
-        if (colisionFun == true) {
-
-
-            stepsph(posx.size(), subDt, h, pressure, rest_density,minX,minY,minZ,maxX,maxY,maxz,visc,nearpressure,h2,pollycoef6,spikycoef,spikygradv,viscK,Sdensity,ndensity);
-
-        }
-        if (heateffect == true) {
-            heating(posx.size(), subDt, hmulti, cold,rc,gc,bc);
-        }
+        
 
 
 
-        if (updateFun == true) {
-			
-            updatebodies(subDt, posx.size(), cold, MAX_HEAT,minX,maxX,minY,maxY,minZ,maxz,restitution, downf
-
-            );
-        }
-
-      
-
+        computephysics(posx.size(), subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc, posx.data(), posy.data(), posz.data(), Size.data(), r.data(), g.data(), b.data());
+        
+        
 
     }
-    updatearray(posx.size(),
-        posx.data(),
-        posy.data(),
-        posz.data(),
-        Size.data(),
-        r.data(),
-        g.data(),
-        b.data());
-       
-
+  
+   
+  //  printf("count from gpu: %d\n", count);
     
 }
 void initBoundingBox() {
@@ -562,7 +526,7 @@ void calcKernels() {
 void drawAll() {
 
     glEnable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND); // IMPORTANT: no transparency
+    glEnable(GL_BLEND); // IMPORTANT: no transparency
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const int VERTS_PER_BODY = 3;
@@ -805,18 +769,31 @@ void updateCameraMovement(GLFWwindow* window, float dt) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.position += camera.right * speed;
 
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
         camera.position += camera.up * speed;
 
-    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.position -= camera.up * speed;
 
 
 }
 void buttons(GLFWwindow* window) {
 
-    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
         restartSimulation();
+    static bool predown = false;
+    bool down = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+    
+    if(down && !predown)
+    {
+        if (nopause == true) {
+            nopause = false;
+        }
+        else if (nopause == false) {
+            nopause = true;
+        }
+    }
+    predown = down;
 }
 void framebuffer_size_callback(GLFWwindow* w, int width, int height) {
     glViewport(0, 0, width, height);
@@ -917,10 +894,12 @@ int main() {
         ImGui::Text("FPS: %.0f (Min: %.0f / Max: %.0f)", avgFps, minFps, maxFps);
        
         ImGui::Text("physics: %5.3f ms", fuc_ms);
-        ImGui::Text("yaw: %.00f  pitch: %.00f", y, p);
+        
         ImGui::Text("x:%.0f y %.0f z %.0f", wx, wy, wz);
-
         ImGui::Text("variables");
+        ImGui::Text("wasd for movement");
+        ImGui::Text("Q and E for height  ");
+        ImGui::Text("K to restart \n space to pause");
         ImGui::SliderFloat("speed", &simspeed, 0.001f, 10.0f);
 
         ImGui::SliderFloat("color fade speed", &cold,0.1f,20.0f);
@@ -931,10 +910,11 @@ int main() {
             calcKernels();
         }
 
-        ImGui::InputFloat("rest density", &rest_density);
-       // ImGui::SliderFloat("rest density", &rest_density,0.01f,10.0f);
+        //ImGui::InputFloat("rest density", &rest_density);
+        ImGui::SliderFloat("rest density", &rest_density,0.001f,10.0f);
         ImGui::InputFloat("pressure f", &pressure);
         //ImGui::SliderFloat("pressure f", &pressure,0.001f,1000.0f);
+       // ImGui::SliderFloat("near pressure f", &nearpressure,1.0f,5000.0f);
         ImGui::InputFloat("near pressure multiplier", &nearpressure);
         
         ImGui::InputFloat("viscosity", &visc);
@@ -944,36 +924,39 @@ int main() {
         ImGui::SliderFloat("G", &downf,0.0f,100.0f);
         ImGui::InputFloat("res", &restitution);
     
-        ImGui::SliderFloat("x", &maxX, 1.0f, 500.0f); {
+        ImGui::SliderFloat("box x", &maxX, 1.0f, 500.0f); {
 
             
             initBoundingBox();
         };
-        ImGui::SliderFloat("-x", &minX, -1.0f, -500.0f); {
+        ImGui::SliderFloat("box -x", &minX, -1.0f, -500.0f); {
 
             
             initBoundingBox();
         };
-        ImGui::SliderFloat("y", &maxY,1.0f,500.0f);
+        ImGui::SliderFloat("box y", &maxY,1.0f,500.0f);
         {
 
             
             initBoundingBox();
-        }ImGui::SliderFloat("-y", &minY,-1.0f,-500.0f);
+        }ImGui::SliderFloat("box -y", &minY,-1.0f,-500.0f);
         {
 
             
             initBoundingBox();
         }
-      
         ImGui::Text("material settings");
+        
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+
+            restartSimulation();
+        }
         ImGui::InputInt("Total Bodies", &totalBodies);
         if (ImGui::IsItemDeactivatedAfterEdit()) {
 
             restartSimulation();
         }
-        ImGui::RadioButton("seperate" ,&A, 1);
-        ImGui::RadioButton("combined" ,&A, 0);
+        
         ImGui::SliderInt("color r", &rc,0,255);
         ImGui::SliderInt("color g", &gc,0,255);
         ImGui::SliderInt("color b", &bc,0,255);
@@ -995,7 +978,7 @@ int main() {
         ImGui::Checkbox("update bodies", &updateFun);
         ImGui::Checkbox("max at 60 fps", &option3);
 
-        ImGui::Checkbox("add particles ", &addparticle);
+        
 
         
 
@@ -1037,9 +1020,9 @@ int main() {
         while (accumulator >= fixedDt) {
 
 
-
-            updatePhysics(effectiveDt);
-
+            if (nopause == true) {
+                updatePhysics(effectiveDt);
+            }
 
 
 

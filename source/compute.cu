@@ -14,13 +14,13 @@
 
 
 #define BLOCKS(n) ((n + 255) / 256)
-#define THREADS 256
+#define THREADS 512
 #define MAX_PARTICLES_PER_CELL 256
 //
 
 ;
 int HASH_TABLE_SIZE;     // 2^18 - adjust based on particle count
-
+int* d_count;
 
 //__host__ __device__ inline float3 make_float3(float x, float y, float z) {
 //    return { x, y, z };
@@ -108,6 +108,7 @@ float* dnearPressure = nullptr;
 
 extern"C" void initgpu(int count) {
 
+   // cudaMemcpy(&d_count, count, sizeof(int), cudaMemcpyDeviceToHost);
 
     cudaMalloc(&dposx, count * sizeof(float));
     cudaMalloc(&dposy, count * sizeof(float));
@@ -133,7 +134,7 @@ extern"C" void initgpu(int count) {
     cudaMalloc(&dPressure, count * sizeof(float));
     cudaMalloc(&dnearPressure, count * sizeof(float));
 
-
+   
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("ERROR: CUDA mem allocation failed: %s\n", cudaGetErrorString(err));
@@ -170,7 +171,7 @@ extern "C" void freegpu() {
      cudaFree(dnearPressure);
 };
 
-extern"C" void updatearray(int count, float* px, float* py, float* pz, float* size, int* r, int* g, int* b) {
+ void updatearray(int count, float* px, float* py, float* pz, float* size, int* r, int* g, int* b) {
     cudaMemcpy(px, dposx, count * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(py, dposy, count * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(pz, dposz, count * sizeof(float), cudaMemcpyDeviceToHost);
@@ -178,8 +179,12 @@ extern"C" void updatearray(int count, float* px, float* py, float* pz, float* si
     cudaMemcpy(r, dr, count * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(b, db, count * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(g, dg, count * sizeof(int), cudaMemcpyDeviceToHost);
- 
-
+   
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("ERROR: CUDA mem update failed: %s\n", cudaGetErrorString(err));
+        return;
+    }
    
 
 }
@@ -207,7 +212,7 @@ __device__ __host__ inline unsigned int spatialHash(int ix, int iy, int iz, int 
         ((unsigned int)iy * p2) ^
         ((unsigned int)iz * p3);
 
-    return hash % HASH_TABLE_SIZE;
+    return hash & (HASH_TABLE_SIZE - 1);
 }
 
 __device__ __host__ inline void getCell(float x, float y, float z,
@@ -226,7 +231,9 @@ __device__ __host__ inline unsigned int getHashFromPos(float x, float y, float z
 }
 
 extern "C" void initDynamicGrid(int maxParticles) {
-    HASH_TABLE_SIZE = maxParticles * 2;
+    HASH_TABLE_SIZE = 1;
+    while (HASH_TABLE_SIZE < maxParticles * 2)
+        HASH_TABLE_SIZE <<= 1;
   //  size_t hashTableBytes = HASH_TABLE_SIZE * sizeof(HashCell);
 
     printf("\n=== INITIALIZING DYNAMIC GRID ===\n");
@@ -415,10 +422,10 @@ void buildDynamicGrid(
         );*/
     computeHashKernel << < blocks, THREADS >> > (numParticles,cellSize,d_px,d_py,d_pz,d_particleHash,d_particleIndex,HASH_TABLE_SIZE);
     
-    cudaError_t err = cudaDeviceSynchronize();
+   /* cudaError_t err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
         printf("ERROR: Grid build failed: %s\n", cudaGetErrorString(err));
-    }
+    }*/
     //sorting
     thrust::sort_by_key(thrust::device, d_particleHash, d_particleHash + numParticles, d_particleIndex);
 
@@ -428,16 +435,16 @@ void buildDynamicGrid(
         return;
     }
 
-    err = cudaDeviceSynchronize();
+   /* err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
         printf("ERROR: Grid sort failed: %s\n", cudaGetErrorString(err));
-    }
+    }*/
 
     findCellBoundariesKernel << <blocks, THREADS >> > (numParticles, d_particleHash, d_cellStart, d_cellEnd);
-     err = cudaDeviceSynchronize();
+    /* err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
         printf("ERROR: Grid bound failed: %s\n", cudaGetErrorString(err));
-    }
+    }*/
 
 }
 
@@ -521,44 +528,14 @@ __device__ float viscosityKernel(float r, float h,float h9) {
 }
 
 //functions
-__global__ void self_density(int n, float h, float* density, float* mass,float* neardensity,float sdensity,float ndensity) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
 
-    bool debug = (i == 0);
-    debug = 0;
-    float r = 0.0f;
-    
-   
-    float value = 0.0f;
-    float nvalue = 0.0f;
-    //density kernel
-    if(r>=0.0f && r< h){
-
-        value = sdensity; //precompute selfdensity based on h as r is zero      
-    }
-    //near density kernel
-    if(r>=0.0f && r< h){
-
-       
-        nvalue = ndensity;//precompute near density based on h as r is zero 
-    }
-
-     float n_d = mass[i] * nvalue;
-    float  d = mass[i] * value;
-    neardensity[i] = n_d;
-    density[i] = d;
-    if (debug)printf("self density :%6f\n", d);
-    if (debug)printf("near density :%6f\n", n_d);
-
-}
-__global__ void self_pressure(int n,  float k, float rest_density, float* density,float* pressure,float* nearpressure,float* neardensity,float k_) {
+__global__ void self_pressure(int n,  float k, float rest_density,const float* __restrict__ density,float* pressure,float* nearpressure,const float* __restrict__ neardensity,float k_) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
     bool debug = 0;
    // bool debug = (i == 0);
-    float p = k * (density[i] - rest_density);;
-    float n_p = neardensity[i] * k_;
+    float p = k * (__ldg(&density[i]) - rest_density);;
+    float n_p = __ldg(&neardensity[i]) * k_;
     nearpressure[i] = n_p;
     pressure[i] = p;
     if (debug && p < 0)printf("pressure value from pressurefromdensity kernel is negative\n");
@@ -668,10 +645,10 @@ __global__ void computeDensity(
     int numParticles,
     float h,
     float cellSize,
-    const float* px,
-    const float* py,
-    const float* pz,
-    const float* mass,
+    const float* __restrict__ px,
+    const float* __restrict__ py,
+    const float* __restrict__ pz,
+    const float* __restrict__ mass,
     float* density,
     int hs,
     float rest_density,
@@ -680,7 +657,7 @@ __global__ void computeDensity(
     int* cellstart,
     int* cellend,
     int* particleindex,
-    float K_,float* neardensity,float pollycoef6,float spikycoef
+    float K_,float* neardensity,float pollycoef6,float spikycoef,float sdensity,float ndensity
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
@@ -688,10 +665,10 @@ __global__ void computeDensity(
     float xi = px[i];
     float yi = py[i];
     float zi = pz[i];
+   
 
-
-    float rho = density[i];
-    float rhon = neardensity[i];
+  //  float rho = density[i];
+    //float rhon = neardensity[i];
     int cx, cy, cz;
     getCell(xi, yi, zi, cellSize, cx, cy, cz);
 
@@ -703,6 +680,12 @@ __global__ void computeDensity(
     // Debug for first particle
    // bool debug = (i == 0);
    bool debug = 0;
+
+   float m_i = mass[i];
+  
+   float rhon = m_i * ndensity;
+   float rho = m_i * sdensity;
+
 
     //if (debug) {
     //    printf("\n=== DENSITY: Particle %d ===\n", i);
@@ -736,20 +719,22 @@ __global__ void computeDensity(
 
                     if (j == i) continue;
 
-                    float dx_val = xi - px[j];
-                    float dy_val = yi - py[j];
-                    float dz_val = zi - pz[j];
+                    float dx_val = xi - __ldg(&px[j]);
+                    float dy_val = yi - __ldg(&py[j]);
+                    float dz_val = zi - __ldg(&pz[j]);
                     float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
 
                     if (r2 < h2) {
-                        float r = sqrtf(r2);
+                        float invR = rsqrtf(r2+ 1e-12f);
+                        float r = r2 * invR;
                         float v = h2 - r * r;
                         float vcube = v * v * v;
                         float d = pollycoef6 * vcube;//precomputed pollycoef6
-                        rho += mass[j] * d;
+                        float m_j = __ldg(&mass[j]);
+                        rho += m_j * d;
                         float x = h - r;
                         float nd = spikycoef * x * x * x;
-                        rhon += mass[j] * nd;
+                        rhon += m_j * nd;
                         neighborCount++;
 
                         /* if (debug && neighborCount <= 5) {
@@ -799,13 +784,13 @@ __global__ void computePressure(
     float cellSize,
     float k_,
     float restDensity,
-    float* pressure,
+    const float* __restrict__ pressure,
     
-    float* px,
-    float* py,
-    float* pz,
-    float* density,
-    float* mass,
+    const float* __restrict__ px,
+    const float* __restrict__ py,
+    const float* __restrict__ pz,
+    const float* __restrict__ density,
+    const float* __restrict__ mass,
     float* ax,
     float* ay,
     float* az,
@@ -816,7 +801,7 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float* nearpressure,float* neardensity,float spikyGradv,float viscK,float pollycoef6
+    int* particleIndex, const float* __restrict__ nearpressure, const float* __restrict__ neardensity,float spikyGradv,float viscK,float pollycoef6
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -828,12 +813,12 @@ __global__ void computePressure(
 
     
     float p_i = pressure[i];
-    float pn_i=nearpressure[i];
+    float pn_i= nearpressure[i];
     float3 force = { 0.0f, 0.0f, 0.0f };
     float3 visc = { 0.0f, 0.0f, 0.0f };
     float3 deltaV = { 0.0f,0.0f,0.0f };
-   
-    float epsilon = 0.1f;
+    float3 vi = make_float3(vx[i], vy[i], vz[i]);
+    float epsilon = 0.3f;
     int cx, cy, cz;
     getCell(xi, yi, zi, cellSize, cx, cy, cz);
 
@@ -841,8 +826,11 @@ __global__ void computePressure(
     int neighborCount = 0;
     bool debug = 0;
    // bool debug = (i==0);
-                        float rho_i = density[i];
+                        float rho_i =  density[i];
                         float nrho_i = neardensity[i];
+
+                        float pressuretermRho_i = p_i / (rho_i * rho_i);
+                        float NpressuretermRho_i = pn_i / (nrho_i * nrho_i);
 
     /* if (debug) {
          printf("\n=== PRESSURE: Particle %d ===\n", i);
@@ -865,18 +853,19 @@ __global__ void computePressure(
 
                     if (j == i) continue;
 
-                    float dx_val = xi - px[j];
-                    float dy_val = yi - py[j];
-                    float dz_val = zi - pz[j];
+                    float dx_val = xi - __ldg(&px[j]);
+                    float dy_val = yi - __ldg(&py[j]);
+                    float dz_val = zi - __ldg(&pz[j]);
                     float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
 
                     if (r2 < h2 && r2 > 1e-9f) {
-                        float r = sqrtf(r2);
+                        float invR = rsqrtf(r2+ 1e-12f);
+                        float r = r2 * invR;
                       
-                        float p_j = pressure[j];
-                        float np_j = nearpressure[j];
+                        float p_j =  __ldg(&pressure[j]);
+                        float np_j = __ldg(&nearpressure[j]);
 
-                        float3 dir = { dx_val / r, dy_val / r, dz_val / r };
+                        float3 dir = { dx_val *invR, dy_val * invR, dz_val * invR };
 
                         neighborCount++;
 
@@ -884,14 +873,14 @@ __global__ void computePressure(
                             printf("  Neighbor %d: dist=%.3f rho=%.6f p=%.6f\n",
                                 j, r, density[j], p_j);
                         }*/
-                        float rho_j = density[j];
-                        float nrho_j = neardensity[j];
+                        float rho_j =  __ldg(&density[j]);
+                        float nrho_j = __ldg(&neardensity[j]);
                         float x = h - r;
                         float gradW = spikyGradv *x*x;//precomputed -gradw
-                        float ngradW = spikyGradv*x*x;
+                        
                       
-                        float pressureterm = (p_i / (rho_i * rho_i) + p_j / (rho_j * rho_j));
-                        float npressureterm = (pn_i / (nrho_i * nrho_i) + np_j / (nrho_j * nrho_j));
+                        float pressureterm = pressuretermRho_i + p_j / (rho_j * rho_j);
+                        float npressureterm =NpressuretermRho_i + np_j / (nrho_j * nrho_j);
                        // float pressureterm = (p_i + p_j)/2;
                        
 
@@ -920,27 +909,27 @@ __global__ void computePressure(
                         //as h increaases particle becomes jittery they repel 
                         //as rest density is incrreases particle distance themselves from others repulsion dominates
                         //high k is very jittery ,even explodes,low k is kinda okkay but jitter at surface
-                        force += -mass[j] * pressureterm * gradW * dir;
-                        force += -mass[j] * npressureterm * ngradW * dir;
-                        float3 vi = make_float3(vx[i], vy[i], vz[i]);
+                        float m_j = __ldg(&mass[j]);
+                        force += -m_j * pressureterm * gradW * dir;
+                        force += -m_j* npressureterm * gradW * dir;
                         float3 vj = make_float3(vx[j], vy[j], vz[j]);
                         float3 vij = vj - vi;
 
                         float lapW = viscK * x;
                         float viscosityCoeff = st;
                         visc += viscosityCoeff
-                            * mass[j]
+                            * m_j
                             * vij
-                            / density[j]
+                            / rho_j
                             * lapW;
                         //combined pressure and xsph
-                        float v = h2 - r * r;
+                        /*float v = h2 - r * r;
                         float W = pollycoef6 * v*v*v;
                         float factor = (mass[j] / density[j]) * W;
 
                         deltaV.x += factor * (vx[j] - vx[i]);
                         deltaV.y += factor * (vy[j] - vy[i]);
-                        deltaV.z += factor * (vz[j] - vz[i]);
+                        deltaV.z += factor * (vz[j] - vz[i]);*/
 
 
 
@@ -959,170 +948,54 @@ __global__ void computePressure(
     ay[i] += (force.y + visc.y );
     az[i] += (force.z + visc.z );
     //apply xsph
-    vx[i] += epsilon * deltaV.x;
+   /* vx[i] += epsilon * deltaV.x;
     vy[i] += epsilon * deltaV.y;
-    vz[i] += epsilon * deltaV.z;
+    vz[i] += epsilon * deltaV.z;*/
    
 }
 
-__global__ void applyXSPH(
-    int numParticles,
-    float h,
-    float cellSize,
 
-    
-    const float* px, const float* py, const float* pz,
-    const float* density,
-    const float* mass,
-    float* vx, float* vy, float* vz, int hs,float h2,float h9, int* cellstart, int* cellend,
-    int* particleIndex
-) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= numParticles) return;
-
-    float xi = px[i];
-    float yi = py[i];
-    float zi = pz[i];
-    float epsilon = 0.1f;
-    float3 deltaV = { 0.0f, 0.0f, 0.0f };
-
-    int cx, cy, cz;
-    getCell(xi, yi, zi, cellSize, cx, cy, cz);
-
-  
-
-    for (int dz = -1; dz <= 1; dz++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
-                int start = cellstart[hash];
-                int end = cellend[hash];
-
-                for (int k = start; k < end ; k++) {
-                    int j = particleIndex[k];
-                    if (j == i) continue;
-
-                    float dx_val = xi - px[j];
-                    float dy_val = yi - py[j];
-                    float dz_val = zi - pz[j];
-                    float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
-
-                    if (r2 < h2) {
-                        float r = sqrtf(r2);
-                        float W = smoothingkernel(r, h,h9);
-                        float factor = (mass[j] / density[j]) * W;
-
-                        deltaV.x += factor * (vx[j] - vx[i]);
-                        deltaV.y += factor * (vy[j] - vy[i]);
-                        deltaV.z += factor * (vz[j] - vz[i]);
-                    }
-                }
-            }
-        }
-    }
-    /*if (i == 0) { 
-        printf("epsilon: %3f\n", epsilon);
-        printf("xsph values in deltaV \n x: %5f \n y: %5f \n y: %5f \n", deltaV.x); }*/
-    vx[i] += epsilon * deltaV.x;
-    vy[i] += epsilon * deltaV.y;
-    vz[i] += epsilon * deltaV.z;
-}
-
-extern "C"
-void stepsph(int totalBodies, float dt, float h, float pressure, float rest_density, float mx, float my, float mz, float maxx, float maxy, float maxz, float visc,float k_,float h2,
-float pollycoef6,float spikycoef,float gradv,float viscK,float sdensity,float ndensity
-    ) {
-
-
-    
-
-    cudaError_t err;
-
-    float d_cellsize = h * 1.0f;//tweaak it gng
-
-    buildDynamicGrid(totalBodies, d_cellsize, dposx, dposy, dposz);
-    err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        printf("ERROR: Grid build failed: %s\n", cudaGetErrorString(err));
-    }
-
-    int B = (totalBodies + THREADS - 1) / THREADS;
-
-    self_density << <B, THREADS >> > (totalBodies, h, dDensity, dMass,dnearDensity,sdensity,ndensity);
-   
-        computeDensity << <B, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dMass, dDensity, HASH_TABLE_SIZE, rest_density, h2, d_cellStart, d_cellEnd, d_particleIndex,k_,dnearDensity,pollycoef6,spikycoef);
-       
-    self_pressure << <B, THREADS >> > (totalBodies, pressure, rest_density, dDensity, dPressure,dnearPressure,dnearDensity,k_);
-   
-        computePressure << <B, THREADS >> > (totalBodies, h, d_cellsize, pressure, rest_density, dPressure, dposx, dposy, dposz, dDensity, dMass, daclx, dacly, daclz, dvelx, dvely, dvelz, visc, HASH_TABLE_SIZE, h2, d_cellStart, d_cellEnd, d_particleIndex,dnearPressure,dnearDensity,gradv,viscK,pollycoef6);
-       
-
-       // applyXSPH << <B, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dDensity, dMass, dvelx, dvely, dvelz, HASH_TABLE_SIZE, h2, h9, d_cellStart, d_cellEnd, d_particleIndex);
-        
-
-  
-        //sphCompute << <B, THREADS >> > (totalBodies,h,d_cellsize,dposx,dposy,dposz,dvelx,dvely,dvelz,daclx,dacly,daclz,dDensity,dPressure,dMass,d_cellStart,d_cellEnd,d_particleIndex,pressure,rest_density,visc,h2,h6,h9,HASH_TABLE_SIZE);
-    
-        
-    
-   
-
-}
-/////////////////////////////////////////
-//heating
-__global__ void computeheat(int totalbodies, float dt, float hmulti, float cold, float* h, float* mass, int* r, int* g, int* b,  float* vx, float* vy, float* vz,int rr,int gg,int bbbb) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= totalbodies) return;
-   
-    float3 v = { vx[i],vy[i],vz[i] };
-    float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
-
-    float heat = speed * 0.5f;
-   // heat += mass[i];
-    h[i] += (heat * hmulti) * dt;
-
-    h[i] *= expf(-cold * dt);
-    h[i] = clamp(h[i], 0.0f, 100.0f);
-    float t = clamp(h[i] / 100.0f, 0.0f, 1.0f);
-    t = pow(t, 0.95f);
-    float bbr = (float)rr;
-    float bbb = (float)gg;
-    float bbg = (float)bbbb;
-
-    float R = lerp(bbr, 255.0f, t);
-    float G = lerp(bbg, 0.0f, t);
-    float B = lerp(bbb, 0.0f, t);
-
-    r[i] = clamp((int)R, 0, 255);
-    g[i] = clamp((int)G, 0, 255);
-    b[i] = clamp((int)B, 0, 255);
-
-
-}
-extern"C"
-void heating(int totalbodies, float dt, float hmulti, float cold,int r,int g,int b) {
-    int B = (totalbodies + THREADS - 1) / THREADS;
-    computeheat << <B, THREADS >> > (totalbodies, dt, hmulti, cold, dHeat, dMass, dr, dg, db, dvelx, dvely, dvelz,r,g,b);
-  
-}
 
 
 //update
 __global__ void updateKernel(float dt, int count, float cold,  float* px, float* py, float* pz, float* vx, float* vy, float* vz, float* ax, float* ay, float* az,
-    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf
+    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int star,float* Heat,float heatMultipler,float heatDecay,float initial_r,float initial_b,float initial_g, int* r, int* g, int* b
 ) {
     // Vec3 acc_new;
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= count) return;
 
+    float3 v = { vx[i],vy[i],vz[i] };
+    float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+
+    float heat = speed * 0.5f;
+    // heat += mass[i];
+    Heat[i] += (heat * heatMultipler) * dt;
+
+    Heat[i] *= expf(-heatDecay * dt);
+    Heat[i] = clamp(Heat[i], 0.0f, 100.0f);
+    float t = clamp(Heat[i] / 100.0f, 0.0f, 1.0f);
+    t = pow(t, 0.95f);
+    float floatr = (float)initial_r;
+    float floatb = (float)initial_b;
+    float floatg = (float)initial_g;
+
+    float R = lerp(floatr, 255.0f, t);
+    float G = lerp(floatg, 0.0f, t);
+    float B = lerp(floatb, 0.0f, t);
+
+    r[i] = clamp((int)R, 0, 255);
+    g[i] = clamp((int)G, 0, 255);
+    b[i] = clamp((int)B, 0, 255);
 
 
+      
+    
     vx[i] += ax[i] * dt;
     vy[i] += ay[i] * dt;
-    vz[i] += (az[i]) * dt;
+    vz[i] += az[i] * dt;
     vz[i] -= downf;
-
 
     px[i] += vx[i] * dt;
     py[i] += vy[i] * dt;
@@ -1249,19 +1122,6 @@ __global__ void updateKernel(float dt, int count, float cold,  float* px, float*
 }
 
 
-
-
-
-extern "C"
-void updatebodies(float dt, int count, float cold, float MAX_HEAT, float minx, float maxx, float miny, float maxy, float minz, float maxz, float res, float downf) {
-
-    int B = (count + THREADS - 1) / THREADS;
-    updateKernel << < B, THREADS >> > (dt, count, cold,  dposx, dposy, dposz, dvelx, dvely, dvelz, daclx, dacly, daclz, minx, maxx, miny, maxy, minz, maxz, res, downf);
-   
-
-
-}
-
 __global__ void registerKernel(int n,float h,
     float Size,float Mass,
     int R,int G,int B,
@@ -1313,13 +1173,13 @@ __global__ void registerKernel(int n,float h,
     // Calculate starting position with half particle spacing offset from edges
     float startX = minX + (maxX - minX - gridSizeX) * 0.5f;
     float startY = minY + (maxY - minY - gridSizeY) * 0.5f;
-    float startZ = maxz - particle_spacing * 1.5f;  // Offset from top
+    float startZ = minZ + (maxz - minZ - gridSizeZ/2);  // Offset from top
 
     // Generate grid
     x = startX + ix * particle_spacing;
     y = startY + iy * particle_spacing;
     z = startZ - iz * particle_spacing;  // Start at maxZ with offset, go downward
-
+    
     Px[i] = x;
     Py[i] = y;
     Pz[i] = z;
@@ -1337,6 +1197,7 @@ __global__ void registerKernel(int n,float h,
     density[i] = 0.0f;
     pressure[i] = 0.0f;
     is[i] = 0;
+    
     r[i] = R;
     g[i] = G;
     b[i] = B;
@@ -1348,5 +1209,69 @@ extern "C" void registerBodies(int n,float h,float Size,float Mass,int R,int G,i
     registerKernel << < Block, THREADS >> > (n,h,Size,Mass,R,G,B,maxX,maxY,maxz,minX,minY,minZ,
                                                  dposx,dposy,dposz,dvelx,dvely,dvelz,daclx,dacly,daclz,dSize,dMass,dIscenter,dr,dg,db,dHeat,dDensity,dPressure
         );
+    
    
+}
+
+
+
+extern "C" void computephysics(int n,float dt,float h,float h2,float pollycoef6,float spikycoef,float gradv,float viscK, float sdensity,float ndensity,float rest_density,float pressure,float k_,
+    float hmulti,float cold,float br,float bg,float bb,float maxX,float maxY,float maxZ,float minX,float minY,float minZ,float restitution,float downwardforce,int isstar,float visc,
+    float* px,float* py,float* pz,float* size,int* r,int* g,int* b
+){
+    int blocks = (n + THREADS - 1) / THREADS;
+    int totalBodies = n;
+    cudaError_t err;
+    float d_cellsize = h * 1.0f;//tweaak it gng
+
+   /* cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);*/
+
+    float ms = 0;
+    //sph//////////////
+    //builg gird
+   /* printf("count %d\n", n);
+    cudaEventRecord(start);*/
+    buildDynamicGrid(n, d_cellsize, dposx, dposy, dposz);
+   /* cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("Grid build: %.2f ms\n", ms);*/
+
+    //density
+  //  cudaEventRecord(start);
+    computeDensity << <blocks, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dMass, dDensity, HASH_TABLE_SIZE, rest_density, h2, d_cellStart, d_cellEnd, d_particleIndex, k_, dnearDensity, pollycoef6, spikycoef,sdensity,ndensity);
+    /*cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("Density: %.2f ms\n", ms);*/
+
+    //pfd
+   // cudaEventRecord(start);
+    self_pressure << <blocks, THREADS >> > (totalBodies, pressure, rest_density, dDensity, dPressure, dnearPressure, dnearDensity, k_);
+    //pressure
+    computePressure << <blocks, THREADS >> > (totalBodies, h, d_cellsize, pressure, rest_density, dPressure, dposx, dposy, dposz, dDensity, dMass, daclx, dacly, daclz, dvelx, dvely, dvelz, visc, HASH_TABLE_SIZE, h2, d_cellStart, d_cellEnd, d_particleIndex, dnearPressure, dnearDensity, gradv, viscK, pollycoef6);
+   // cudaEventRecord(stop);
+   // cudaEventSynchronize(stop);
+   // cudaEventElapsedTime(&ms, start, stop);
+   // printf("Pressure: %.2f ms\n", ms);
+
+    //intigration
+   // cudaEventRecord(start);
+    updateKernel << < blocks, THREADS >> > (dt, totalBodies, cold, dposx, dposy, dposz, dvelx, dvely, dvelz, daclx, dacly, daclz, minX, maxX, minY, maxY, minZ, maxZ, restitution, downwardforce, isstar,dHeat,hmulti,cold,br,bb,bg,dr,dg,db);
+    //////////////////////
+   /* cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("Update: %.2f ms\n", ms);*/
+
+    updatearray(n,px,py,pz,size,r,g,b);
+    /*cudaEventRecord(start);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("Update array: %.2f ms\n", ms);*/
+    /*cudaEventDestroy(start);
+    cudaEventDestroy(stop);*/
 }
