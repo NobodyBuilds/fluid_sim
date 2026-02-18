@@ -1,15 +1,32 @@
 # 🌊 SPH Fluid Simulation
 
-A **high‑performance Smoothed Particle Hydrodynamics (SPH)** simulation built for realistic fluid behavior using **GPU acceleration (CUDA)** and spatial hashing for fast neighbor searches.
+A **real time Smoothed Particle Hydrodynamics (SPH) fluid ** simulation built for realistic fluid behavior using **GPU acceleration (CUDA)** and spatial hashing for fast neighbor searches.
 
 This project focuses on **real‑time fluid physics**, tunable physical parameters, and scalability for thousands of particles — designed for experimentation, learning, and performance.
 
+
+## notice
+not perfect yet!
+so expect errors or bugs and feel free to give feedback
+
+
+<img width="749" height="373" alt="Screenshot 2026-02-12 222005" src="https://github.com/user-attachments/assets/60f002f7-3f23-4da0-a18b-789749b212a9" />
+
+
+<img width="822" height="444" alt="Screenshot 2026-02-12 221501" src="https://github.com/user-attachments/assets/d614d5bb-d022-42aa-8c40-82fb5c58ec28" />
+
+
+
 ---
+## comtrols
+wasd for camera movement
+shift and space to change height movement
 
 ## 🚀 Features
 
 * ⚡ **GPU‑accelerated SPH (CUDA)**
 * 🧠 **Spatial grid / hashing** for fast neighbor lookup
+
 * 💧 Realistic **pressure, density, viscosity & surface tension**
 * 📦 Configurable **bounding box with friction & damping**
 * 🧪 Fully **tunable simulation parameters**
@@ -104,25 +121,23 @@ Grid Hash
 ---
 
 ## ⚙️ Build & Run
-
+ 
 ### CUDA Build Example
-
-```bash
-nvcc -O3 source/compute.cu -o build
-```
+cuda is used as a lib which is compiled befor with the help of build_cuda.bat file
+ download the whole repo and in the build cuda file edit the compute.cu address and compile before the whole project
 
 
 
-> Recommended GPU: RTX 2000+ series or higher
-* reste the gpu sm_ for campatibility
+
+> Recommended GPU: nivida gpu 
+* if faced error in cuda compilation or runtime error then tweak the arch sm_ in the build_cuda.bat with your gpu arch like sm_75,sm_85 etc based on gpu series
 ---
 
 ## 🐛 Debug & Diagnostics
 
 * Print neighbor counts
 * Inspect density & pressure
-* Detect NaNs or unstable kernels
-* Compare CPU vs GPU behavior
+
 
 ---
 
@@ -137,10 +152,8 @@ nvcc -O3 source/compute.cu -o build
 
 ## 🎯 Planned Improvements
 
-* 🧩 Position‑Based SPH mode
-* 🌪️ Vorticity confinement
-* 🫧 Foam & splash effects
-* 🌊 Multi‑phase fluids
+* 🌪️ Vorticity confinemen
+
 * 🧵 Async GPU compute pipeline
 * 🎥 Real‑time visualization UI
 
@@ -157,6 +170,4 @@ Open‑source for learning & experimentation. Modify freely.
 Built with passion for **fluid physics, GPU compute, and simulation engineering**.
 
 feel free to contibute 
-* issues
 
-- low neibhor count
