@@ -1,12 +1,19 @@
 ﻿#include"compute.h"
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
 #include"D:\visual_studio\fluid_sim\struct.h"
 #include<atomic>
 #include<cuda.h>
 #include <cuda_runtime.h>
+
+#include<cuda_gl_interop.h>
 #include<cuda_runtime_api.h>
 #include<curand_kernel.h>
 #include<device_launch_parameters.h>
 #include<iostream>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include<math_constants.h>
 #include<math_functions.h>
 #include <thrust/device_ptr.h>
@@ -16,15 +23,10 @@
 #define BLOCKS(n) ((n + 255) / 256)
 #define THREADS 512
 #define MAX_PARTICLES_PER_CELL 256
-//
 
 ;
 int HASH_TABLE_SIZE;     // 2^18 - adjust based on particle count
-int* d_count;
-
-//__host__ __device__ inline float3 make_float3(float x, float y, float z) {
-//    return { x, y, z };
-//}
+//device helpers
 __host__ __device__ inline float clamp(float x, float lo, float hi)
 {
     return x < lo ? lo : (x > hi ? hi : x);
@@ -77,7 +79,7 @@ __host__ __device__ inline float3 normalize(float3 v) {
 __device__ __forceinline__ float lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
-
+// arrays to store particle data
 float* dposx = nullptr;
 float* dposy = nullptr;
 float* dposz = nullptr;
@@ -171,23 +173,66 @@ extern "C" void freegpu() {
      cudaFree(dnearPressure);
 };
 
- void updatearray(int count, float* px, float* py, float* pz, float* size, int* r, int* g, int* b) {
-    cudaMemcpy(px, dposx, count * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(py, dposy, count * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(pz, dposz, count * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(size, dSize, count * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(r, dr, count * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(b, db, count * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(g, dg, count * sizeof(int), cudaMemcpyDeviceToHost);
-   
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("ERROR: CUDA mem update failed: %s\n", cudaGetErrorString(err));
-        return;
-    }
-   
+ struct GLVertex {
+     float px, py, pz;
+     float radius;
+     float cr, cg, cb, ca;
+     float ox, oy;
+     float wx, xy, xz;
+ };
 
-}
+ static cudaGraphicsResource* g_vboResource = nullptr;
+
+ extern "C" void registerGLBuffer(unsigned int vboId)
+ {
+     cudaError_t err = cudaGraphicsGLRegisterBuffer(
+         &g_vboResource, vboId, cudaGraphicsMapFlagsWriteDiscard);
+     if (err != cudaSuccess)
+         printf("ERROR: cudaGraphicsGLRegisterBuffer: %s\n", cudaGetErrorString(err));
+     else
+         printf("INFO: GL VBO %u registered with CUDA\n", vboId);
+ }
+
+ extern "C" void unregisterGLBuffer()
+ {
+     if (g_vboResource) {
+         cudaGraphicsUnregisterResource(g_vboResource);
+         g_vboResource = nullptr;
+     }
+ }
+
+ __global__ void packToVBOKernel(
+     int n,
+     const float* __restrict__ px, const float* __restrict__ py, const float* __restrict__ pz,
+     const float* __restrict__ sz,
+     const int* __restrict__ r, const int* __restrict__ g, const int* __restrict__ b,
+     GLVertex* vbo)
+ {
+     int i = blockIdx.x * blockDim.x + threadIdx.x;
+     if (i >= n) return;
+
+     float fpx = __ldg(&px[i]), fpy = __ldg(&py[i]), fpz = __ldg(&pz[i]);
+     float rad = __ldg(&sz[i]);
+     float fcr = __ldg(&r[i]) * (1.0f / 255.0f);
+     float fcg = __ldg(&g[i]) * (1.0f / 255.0f);
+     float fcb = __ldg(&b[i]) * (1.0f / 255.0f);
+
+     // Matches the offsets used in the old CPU drawAll() loop
+     const float ox[3] = { -1.0f,  3.0f, -1.0f };
+     const float oy[3] = { -1.0f, -1.0f,  3.0f };
+
+     int base = i * 3;
+     for (int k = 0; k < 3; k++) {
+         GLVertex& v = vbo[base + k];
+         v.px = fpx;  v.py = fpy;  v.pz = fpz;
+         v.radius = rad;
+         v.cr = fcr;  v.cg = fcg;  v.cb = fcb;  v.ca = 1.0f;
+         v.ox = ox[k]; v.oy = oy[k];
+         v.wx = 0.0f;  v.xy = 0.0f;  v.xz = 0.0f;
+     }
+ }
+
+
 
 /// ///////////////////////////
 //sph
@@ -306,10 +351,6 @@ __global__ void computeHashKernel(
     particleIndex[i] = i;  // Store original index
 }
 
-//__device__ void bitonicSort(unsigned int* keys, int* values, int n) {
-//    // For production, use thrust::sort_by_key or similar
-//    // This is a placeholder - implement proper sorting
-//}
 
 __global__ void findCellBoundariesKernel(
     int numParticles,
@@ -333,56 +374,6 @@ __global__ void findCellBoundariesKernel(
 
     if (i == numParticles - 1) {
         cellEnd[hash] = numParticles;
-    }
-}
-
-__global__ void buildHashTableKernel(
-    int numParticles,
-    float cellSize,
-    const float* px,
-    const float* py,
-    const float* pz,
-    HashCell* hashTable, int hs
-) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= numParticles) return;
-
-    float x = px[i];
-    float y = py[i];
-    float z = pz[i];
-
-    // Check for NaN
-    if (isnan(x) || isnan(y) || isnan(z)) {
-        if (i < 5) printf("WARNING: Particle %d has NaN position\n", i);
-        return;
-    }
-
-    // Get hash
-    int ix, iy, iz;
-    getCell(x, y, z, cellSize, ix, iy, iz);
-
-
-    unsigned int hash = spatialHash(ix, iy, iz, hs);
-
-    /* if (i < 10) {
-         printf("BUILD: Particle %d: pos=(%.3f, %.3f, %.3f) cell=(%d, %d, %d) hash=%u\n",
-             i, x, y, z, ix, iy, iz, hash);
-     }*/
-     // Atomically add to hash table
-    int slot = atomicAdd(&hashTable[hash].count, 1);
-
-    if (slot < MAX_PARTICLES_PER_CELL) {
-        hashTable[hash].particles[slot] = i;
-        /* if (i < 10) {
-             printf("  -> Inserted at slot %d in bucket %u\n", slot, hash);
-         }*/
-    }
-    else {
-        // Cell overflow - reduce count back
-        atomicSub(&hashTable[hash].count, 1);
-        if (slot == MAX_PARTICLES_PER_CELL) {
-            printf("WARNING: Cell hash %u overflow (particle %d)\n", hash, i);
-        }
     }
 }
 
@@ -450,84 +441,9 @@ void buildDynamicGrid(
 
 
 
-__device__ float smoothingkernel(float r, float h,float h9) {
-    if (r >= 0.0f && r < h) {
-        float polycoeff = 315.0f / (64.0f * CUDART_PI_F * h9);
-        float v = h * h - r * r;
-        return  v * v * v * polycoeff;
-
-         /*float v = CUDART_PI * powf(h, 8) / 4;
-         float value = fmaxf(0.0f, h * h - r * r);
-         return value * value / v;*/
-    }
-    return 0.0f;
-}
-__device__ float spikyKernel(float r, float h) {
-    if (r >= 0.0f && r < h) {
-        float coeff = 15.0f / (CUDART_PI_F * powf(h, 6));
-        float x = h - r;
-        return coeff * x * x * x;
-    }
-    return 0.0f;
-}
-__device__ float densitykernel(float dst, float radius,float h9) {
-
-    return smoothingkernel(dst, radius,h9);
-    //  return spikyKernel(dst, radius);
-}
-__device__ float neardensitykernel(float r, float h) {
-   return spikyKernel(r, h);
-}
-__device__ float spikyGrad(float r, float h,float h6) {
-    if (r > 0.0f && r < h) {
-        float v = h - r;
-        return -45.0f / (CUDART_PI_F * h6) * v*v;
 
 
-    }
-    return 0.0f;
-}
-__device__ float PressureFromDensity(float density, float pressure, float rest_density)
-{
-    float p= pressure * (density - rest_density);
-
-    
-    return p;
-
-    // Adiabatic index
-
-          /* float p=  pressure * (powf(rest_density / density, gamma) - 1.0f);
-   return fmaxf(0.0f,p);
-           */
-
-
-
-           //float ratio = density / rest_density;
-
-           ////// Soft transition around rest density
-           //if (ratio < 1.0f) {
-           //    // Under compression: very soft pressure
-           //    return pressure * 0.1f * (powf(ratio, gamma) - 1.0f);
-           //}
-           //else {
-           //    // Compression: normal pressure
-           //    return pressure * (powf(ratio, gamma) - 1.0f);
-           //}
-}
-__device__ float nearpressurefromdensity(float d, float k) {
-    return d * k;
-}
-
-__device__ float viscosityKernel(float r, float h,float h9) {
-    float h2 = h * h;
-    if (r < h) {
-        return 45.0f / (CUDART_PI_F * (h2 * h2 * h2)) * (h - r);
-    }
-    return 0.0f;
-   
-}
-
-//functions
+//sph-functions
 
 __global__ void self_pressure(int n,  float k, float rest_density,const float* __restrict__ density,float* pressure,float* nearpressure,const float* __restrict__ neardensity,float k_) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -542,104 +458,7 @@ __global__ void self_pressure(int n,  float k, float rest_density,const float* _
     if (debug && p > 0)printf("pressure value from pressurefromdensity kernel is postive\n");
 
 }
-//for optimization still in progrress
-__global__ void sphCompute(
-    int n, float h, float cellSize,
-    float* px, float* py, float* pz,
-    float* vx, float* vy, float* vz,
-    float* ax, float* ay, float* az,
-    float* density, float* pressure,
-    float* mass, int* cellstart, int* cellend,
-    int* particleindex, float K, float r_density,
-    float visc, float h2, float h6, float h9, int hs
-) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
 
-    float xi = px[i];
-    float yi = py[i];
-    float zi = pz[i];
-   
-    float3 force={0.0f,0.0f,0.0f};
-    float3 vforce = { 0.0f,0.0f,0.0f };
-    float3 deltaV = { 0.0f,0.0f,0.0f };
-    float epsilon = 0.3f;
-    float p_i = pressure[i];
-    float rho_i = density[i];
-    int cx, cy, cz;
-    getCell(xi, yi, zi, cellSize, cx, cy, cz);
-
-    // Search 27 neighboring cells
-    for (int dz = -1; dz <= 1; dz++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
-
-                int start = cellstart[hash];
-                int end = cellend[hash];
-                if (start == -1) continue;
-
-                for (int k = start; k < end; k++) {
-                    int j = particleindex[k];
-
-                    if (j == i) continue;
-
-                    float dx_val = xi - px[j];
-                    float dy_val = yi - py[j];
-                    float dz_val = zi - pz[j];
-                    float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
-
-                    if (r2 < h2 && r2 > 1e-9f) {
-                        float r = sqrtf(r2);
-                        //density
-                        float D= mass[j] * densitykernel(r, h, h9);
-                        density[i] = D;
-                        //pressure
-                        float p_j = pressure[j];
-                        float3 dir= { dx_val / r, dy_val / r, dz_val / r };
-                        float rho_j = density[j];
-                        float3 ri = make_float3(xi, yi, zi);
-                        float3 rj = make_float3(px[j], py[j], pz[j]);
-                        float3 rij = ri - rj;
-                        float rl = length(rij);
-                        float3 gradW =(rij/rl) * spikyGrad(r, h, h6);
-                        float pressureterm = (p_i / (rho_i * rho_i) + p_j / (rho_j * rho_j));
-
-                        force += mass[j] * pressureterm * gradW;//* dir;
-                        //viscosity
-                        float3 vi = make_float3(vx[i], vy[i], vz[i]);
-                        float3 vj = make_float3(vx[j], vy[j], vz[j]);
-                        float3 vij = vj - vi;
-
-                        float lapW = viscosityKernel(r, h,h9);
-                        float viscosityCoeff = visc;
-                        vforce += viscosityCoeff
-                            * mass[j]
-                            * vij
-                            / density[j]
-                            * lapW;
-                        //xsph
-                        float W = smoothingkernel(r, h, h9);
-                        float factor = (mass[j] / density[j]) * W;
-
-                        deltaV.x += factor * (vx[j] - vx[i]);
-                        deltaV.y += factor * (vy[j] - vy[i]);
-                        deltaV.z += factor * (vz[j] - vz[i]);
-
-                    }
-
-                }
-            }
-        }
-    }
-    ax[i] = (force.x + vforce.x) /*mass[i]*/;
-    ay[i] = (force.y + vforce.y) /*mass[i]*/;
-    az[i] = (force.z + vforce.z) /*mass[i]*/;
-    vx[i] += epsilon * deltaV.x;
-    vy[i] += epsilon * deltaV.y;
-    vz[i] += epsilon * deltaV.z;
-
-}
 
 __global__ void computeDensity(
     int numParticles,
@@ -958,7 +777,7 @@ __global__ void computePressure(
 
 
 //update
-__global__ void updateKernel(float dt, int count, float cold,  float* px, float* py, float* pz, float* vx, float* vy, float* vz, float* ax, float* ay, float* az,
+__global__ void updateKernel(float dt, int count, float cold,  float* px, float* py, float* pz,  float* vx, float* vy, float* vz, float* ax, float* ay, float* az,
     float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int star,float* Heat,float heatMultipler,float heatDecay,float initial_r,float initial_b,float initial_g, int* r, int* g, int* b
 ) {
     // Vec3 acc_new;
@@ -1207,26 +1026,19 @@ __global__ void registerKernel(int n,float h,
 extern "C" void registerBodies(int n,float h,float Size,float Mass,int R,int G,int B, float maxX, float maxY, float maxz, float minX, float minY, float minZ ) {
     int Block = (n + THREADS - 1) / THREADS;
     registerKernel << < Block, THREADS >> > (n,h,Size,Mass,R,G,B,maxX,maxY,maxz,minX,minY,minZ,
-                                                 dposx,dposy,dposz,dvelx,dvely,dvelz,daclx,dacly,daclz,dSize,dMass,dIscenter,dr,dg,db,dHeat,dDensity,dPressure
-        );
-    
-   
+                                                 dposx,dposy,dposz,dvelx,dvely,dvelz,daclx,dacly,daclz,dSize,dMass,dIscenter,dr,dg,db,dHeat,dDensity,dPressure);  
 }
 
-
-
-extern "C" void computephysics(int n,float dt,float h,float h2,float pollycoef6,float spikycoef,float gradv,float viscK, float sdensity,float ndensity,float rest_density,float pressure,float k_,
-    float hmulti,float cold,float br,float bg,float bb,float maxX,float maxY,float maxZ,float minX,float minY,float minZ,float restitution,float downwardforce,int isstar,float visc,
-    float* px,float* py,float* pz,float* size,int* r,int* g,int* b
-){
+extern "C" void computephysics(int n, float dt, float h, float h2, float pollycoef6, float spikycoef, float gradv, float viscK, float sdensity, float ndensity, float rest_density, float pressure, float k_,
+    float hmulti, float cold, float br, float bg, float bb, float maxX, float maxY, float maxZ, float minX, float minY, float minZ, float restitution, float downwardforce, int isstar, float visc) {
     int blocks = (n + THREADS - 1) / THREADS;
     int totalBodies = n;
     cudaError_t err;
     float d_cellsize = h * 1.0f;//tweaak it gng
 
-   /* cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);*/
+    /* cudaEvent_t start, stop;
+     cudaEventCreate(&start);
+     cudaEventCreate(&stop);*/
 
     float ms = 0;
     //sph//////////////
@@ -1234,14 +1046,14 @@ extern "C" void computephysics(int n,float dt,float h,float h2,float pollycoef6,
    /* printf("count %d\n", n);
     cudaEventRecord(start);*/
     buildDynamicGrid(n, d_cellsize, dposx, dposy, dposz);
-   /* cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&ms, start, stop);
-    printf("Grid build: %.2f ms\n", ms);*/
+    /* cudaEventRecord(stop);
+     cudaEventSynchronize(stop);
+     cudaEventElapsedTime(&ms, start, stop);
+     printf("Grid build: %.2f ms\n", ms);*/
 
-    //density
-  //  cudaEventRecord(start);
-    computeDensity << <blocks, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dMass, dDensity, HASH_TABLE_SIZE, rest_density, h2, d_cellStart, d_cellEnd, d_particleIndex, k_, dnearDensity, pollycoef6, spikycoef,sdensity,ndensity);
+     //density
+   //  cudaEventRecord(start);
+    computeDensity << <blocks, THREADS >> > (totalBodies, h, d_cellsize, dposx, dposy, dposz, dMass, dDensity, HASH_TABLE_SIZE, rest_density, h2, d_cellStart, d_cellEnd, d_particleIndex, k_, dnearDensity, pollycoef6, spikycoef, sdensity, ndensity);
     /*cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&ms, start, stop);
@@ -1252,26 +1064,39 @@ extern "C" void computephysics(int n,float dt,float h,float h2,float pollycoef6,
     self_pressure << <blocks, THREADS >> > (totalBodies, pressure, rest_density, dDensity, dPressure, dnearPressure, dnearDensity, k_);
     //pressure
     computePressure << <blocks, THREADS >> > (totalBodies, h, d_cellsize, pressure, rest_density, dPressure, dposx, dposy, dposz, dDensity, dMass, daclx, dacly, daclz, dvelx, dvely, dvelz, visc, HASH_TABLE_SIZE, h2, d_cellStart, d_cellEnd, d_particleIndex, dnearPressure, dnearDensity, gradv, viscK, pollycoef6);
-   // cudaEventRecord(stop);
-   // cudaEventSynchronize(stop);
-   // cudaEventElapsedTime(&ms, start, stop);
-   // printf("Pressure: %.2f ms\n", ms);
+    // cudaEventRecord(stop);
+    // cudaEventSynchronize(stop);
+    // cudaEventElapsedTime(&ms, start, stop);
+    // printf("Pressure: %.2f ms\n", ms);
 
-    //intigration
-   // cudaEventRecord(start);
-    updateKernel << < blocks, THREADS >> > (dt, totalBodies, cold, dposx, dposy, dposz, dvelx, dvely, dvelz, daclx, dacly, daclz, minX, maxX, minY, maxY, minZ, maxZ, restitution, downwardforce, isstar,dHeat,hmulti,cold,br,bb,bg,dr,dg,db);
+     //intigration
+    // cudaEventRecord(start);
+    updateKernel << < blocks, THREADS >> > (dt, totalBodies, cold, dposx, dposy, dposz, dvelx, dvely, dvelz, daclx, dacly, daclz, minX, maxX, minY, maxY, minZ, maxZ, restitution, downwardforce, isstar, dHeat, hmulti, cold, br, bb, bg, dr, dg, db);
     //////////////////////
    /* cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&ms, start, stop);
     printf("Update: %.2f ms\n", ms);*/
 
-    updatearray(n,px,py,pz,size,r,g,b);
-    /*cudaEventRecord(start);
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&ms, start, stop);
-    printf("Update array: %.2f ms\n", ms);*/
-    /*cudaEventDestroy(start);
-    cudaEventDestroy(stop);*/
+    if (g_vboResource) {
+        cudaGraphicsMapResources(1, &g_vboResource, 0);
+
+        GLVertex* d_vbo = nullptr;
+        size_t    nbytes = 0;
+        cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
+
+        packToVBOKernel << <blocks, THREADS >> > (
+            n, dposx, dposy, dposz, dSize, dr, dg, db, d_vbo);
+
+        cudaGraphicsUnmapResources(1, &g_vboResource, 0);
+
+        // updatearray(n,px,py,pz,size,r,g,b);
+         /*cudaEventRecord(start);
+         cudaEventRecord(stop);
+         cudaEventSynchronize(stop);
+         cudaEventElapsedTime(&ms, start, stop);
+         printf("Update array: %.2f ms\n", ms);*/
+         /*cudaEventDestroy(start);
+         cudaEventDestroy(stop);*/
+    }
 }

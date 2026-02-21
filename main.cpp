@@ -105,6 +105,10 @@ GLuint bboxProgram = 0;
 GLuint bboxVAO = 0;
 GLuint bboxVBO = 0;
 
+GLint loc_uProj = -1, loc_uView = -1;
+GLint loc_uLightDir = -1, loc_uCameraPos = -1;
+GLint bloc_uProj = -1, bloc_uView = -1, bloc_uColor = -1;
+
 const char* boxvert = R"glsl(
 #version 330 core
 layout (location = 0) in vec3 aPos;
@@ -240,8 +244,8 @@ static GLuint createProgram(const char* vs, const char* fs) {
     return p;
 }
 
-void ensureVBOCapacity(size_t verts) {
-    if (verts <= vbo_capacity) return;
+bool ensureVBOCapacity(size_t verts) {
+    if (verts <= vbo_capacity) return false ;
 
     vbo_capacity = verts * 2 + 256;
     if (vbo) glDeleteBuffers(1, &vbo);
@@ -273,6 +277,8 @@ void ensureVBOCapacity(size_t verts) {
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    return true;
 }
 
 // CHANGE: IBO for indexed quad rendering
@@ -346,7 +352,7 @@ float simspeed = 1.0f;
 //particle settings
 
 int totalBodies = 20000;
-int count = totalBodies;
+int count=20000 ;
 float size = 1.0f;
 float mmass = 10.0f;
 
@@ -373,7 +379,7 @@ bool nopause = true;
 float h = 3.5f;
 float cellsize = h*1.5f;
 float h2 = h * h;
-float rest_density = 2.0f;//density-idk
+float rest_density = 3.0f;//density-idk
 float pressure = 1000.0f;//pressure-idk--K
 float nearpressure = 5000.0f;
 float visc = 5.0f;
@@ -391,11 +397,7 @@ float ndensity;
 float spikygradv;
 float viscK;
 //arrays 
-std::vector<float> posx, posy, posz;
 
-std::vector<float> Size;
-
-std::vector<int> r, g, b;
 
 
 int star = 0;
@@ -410,37 +412,18 @@ int rc = 25;
 int gc = 50;
 int bc = 255;
 //////////////////////////////////////
-void setcount() {
-    for (int i = 0; i < totalBodies; i++) {
-        posx.push_back(100.0f);
-        posy.push_back(100.0f);
-        posz.push_back(100.0f);
 
-        Size.push_back(size);
-        r.push_back(rc);
-        g.push_back(gc);
-        b.push_back(bc);
-    }
-}
 
 //register particles
 
 void restartSimulation() {
-	
-    posx.clear();
-    posy.clear();
-    posz.clear();
-
-    Size.clear();
-    r.clear();
-    g.clear();
-    b.clear();
+    
+    count = totalBodies;
     freeDynamicGrid();
     freegpu();
-    setcount();
-    initgpu(posx.size());
-	initDynamicGrid(posx.size());
-    registerBodies(posx.size(), h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+    initgpu(count);
+	initDynamicGrid(count);
+    registerBodies(count, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
   
     
 
@@ -462,7 +445,7 @@ void updatePhysics(float dt) {
 
 
 
-        computephysics(posx.size(), subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc, posx.data(), posy.data(), posz.data(), Size.data(), r.data(), g.data(), b.data());
+        computephysics(count, subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc);
         
         
 
@@ -473,6 +456,10 @@ void updatePhysics(float dt) {
     
 }
 void initBoundingBox() {
+
+    if (bboxVAO) { glDeleteVertexArrays(1, &bboxVAO); bboxVAO = 0; }
+    if (bboxVBO) { glDeleteBuffers(1, &bboxVBO); bboxVBO = 0; }
+
     
     float boxVerts[] = {
         // bottom rectangle
@@ -528,57 +515,15 @@ void drawAll() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND); // IMPORTANT: no transparency
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    const int VERTS_PER_BODY = 3;
-    size_t totalVerts = posx.size() * VERTS_PER_BODY;
-
-    ensureVBOCapacity(totalVerts);
-    ensureIBOCapacity(posx.size());
-
-    std::vector<GLVertex> verts(totalVerts);
-
-    for (int i = 0; i < posx.size(); i++) {
-        
-
-        float cr = r[i] / 255.0f;
-        float cg = g[i] / 255.0f;
-        float cb = b[i] / 255.0f;
-
-        int v = i * 3;
-
-        // Fullscreen-covering triangle offsets
-        const float ox[3] = { -1.0f,  3.0f, -1.0f };
-        const float oy[3] = { -1.0f, -1.0f,  3.0f };
-
-        for (int k = 0; k < 3; k++) {
-            verts[v + k].px = posx[i];
-            verts[v + k].py = posy[i];
-            verts[v + k].pz = posz[i];
-
-            verts[v + k].radius = Size[i];
-
-            verts[v + k].cr = cr;
-            verts[v + k].cg = cg;
-            verts[v + k].cb = cb;
-            verts[v + k].ca = 1.10f;
-
-            verts[v + k].ox = ox[k];
-            verts[v + k].oy = oy[k];
-
-
-        }
+    // Ensure VBO is large enough (first frame, or after MaxFps growth).
+   // If it had to grow, re-register it with CUDA.
+    if (ensureVBOCapacity((size_t)count * 3)) {
+        registerGLBuffer(vbo);
     }
 
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferSubData(
-        GL_ARRAY_BUFFER,
-        0,
-        verts.size() * sizeof(GLVertex),
-        verts.data()
-    );
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    
 
-    glUseProgram(program);
+  
 
     glm::mat4 proj = glm::perspective(
         glm::radians(camera.fov),
@@ -587,68 +532,35 @@ void drawAll() {
         20000.0f
     );
 
-    glm::mat4 view = glm::lookAt(
+    glm::mat4 viewMat = glm::lookAt(
         camera.position,
         camera.position + camera.forward,
         camera.up
     );
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(program, "uProj"),
-        1, GL_FALSE, glm::value_ptr(proj)
-    );
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(program, "uView"),
-        1, GL_FALSE, glm::value_ptr(view)
-    );
     glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 0.6f, 1.0f));
 
-    glUniform3f(
-        glGetUniformLocation(program, "uLightDir"),
-        lightDir.x,
-        lightDir.y,
-        lightDir.z
-    );
-    glUniform3f(
-        glGetUniformLocation(program, "uCameraPos"),
-        wx,
-        wy,
-        wz
-    );
+   
+    glUseProgram(program);
+    glUniformMatrix4fv(loc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(loc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
+    glUniform3fv(loc_uLightDir, 1, glm::value_ptr(lightDir));
+    glUniform3f(loc_uCameraPos, wx, wy, wz);
 
     glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, posx.size() * 3);
+    glDrawArrays(GL_TRIANGLES, 0, count * 3);
     glBindVertexArray(0);
-
     glUseProgram(0);
 
-    glUseProgram(bboxProgram); // or reuse program if compatible
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(bboxProgram, "uProj"),
-        1, GL_FALSE, glm::value_ptr(proj)
-    );
-
-    glUniformMatrix4fv(
-        glGetUniformLocation(bboxProgram, "uView"),
-        1, GL_FALSE, glm::value_ptr(view)
-    );
-
-    // white lines
-    glUniform3f(
-        glGetUniformLocation(bboxProgram, "uColor"),
-        1.0f, 1.0f, 1.0f
-    );
-   // glDisable(GL_DEPTH_TEST);
+    // ── bounding box pass ────────────────────────────────────────────────────
+    glUseProgram(bboxProgram);
+    glUniformMatrix4fv(bloc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(bloc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
+    glUniform3f(bloc_uColor, 1.0f, 1.0f, 1.0f);
 
     glBindVertexArray(bboxVAO);
     glLineWidth(1.0f);
-
-    glDrawArrays(GL_LINES, 0, 24); // 12 edges * 2 verts
+    glDrawArrays(GL_LINES, 0, 24);
     glBindVertexArray(0);
-
-   // glEnable(GL_DEPTH_TEST);
     glUseProgram(0);
 }
 bool option3 = false;
@@ -806,7 +718,7 @@ int main() {
     }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 
     GLFWwindow* window = glfwCreateWindow(screenWidth, screenHeight, "fluid Simulation - OpenGL", nullptr, nullptr);
@@ -844,10 +756,25 @@ int main() {
     // CHANGE: Create shader program
     program = createProgram(vertexShaderSource, fragmentShaderSource);
     bboxProgram = createProgram(boxvert, boxfrag);
-    ensureVBOCapacity(1024);
 
+    loc_uProj = glGetUniformLocation(program, "uProj");
+    loc_uView = glGetUniformLocation(program, "uView");
+    loc_uLightDir = glGetUniformLocation(program, "uLightDir");
+    loc_uCameraPos = glGetUniformLocation(program, "uCameraPos");
+    bloc_uProj = glGetUniformLocation(bboxProgram, "uProj");
+    bloc_uView = glGetUniformLocation(bboxProgram, "uView");
+    bloc_uColor = glGetUniformLocation(bboxProgram, "uColor");
 
+    calcKernels();
+    initBoundingBox();
+    initgpu(totalBodies);
+    initDynamicGrid(totalBodies);
 
+    ensureVBOCapacity((size_t)500000*3);
+    registerGLBuffer(vbo);
+
+    registerBodies(totalBodies, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+    
     float accumulator = 0.f;
     float fps = 0.f, avgFps = 0.f, maxFps = 0.f, minFps = 9999.f;
     float fpsTimer = 0.f;
@@ -857,13 +784,8 @@ int main() {
     const float targetFPS = 60.0f;
     const float upperThreshold = 65.0f;
     const float lowerThreshold = 55.0f;
-    calcKernels();
-    setcount();
-    initBoundingBox();
-    initgpu(posx.size());
-    
-	initDynamicGrid(posx.size());
-    registerBodies(posx.size(), h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+   
+   
    
 
    
@@ -888,117 +810,48 @@ int main() {
 
         // UI 
         ImGui::Begin("Settings");
-        if (posx.size() != totalBodies) {
-            ImGui::Text("body count error");
-        }
         ImGui::Text("FPS: %.0f (Min: %.0f / Max: %.0f)", avgFps, minFps, maxFps);
-       
         ImGui::Text("physics: %5.3f ms", fuc_ms);
-        
         ImGui::Text("x:%.0f y %.0f z %.0f", wx, wy, wz);
         ImGui::Text("variables");
         ImGui::Text("wasd for movement");
-        ImGui::Text("Q and E for height  ");
-        ImGui::Text("K to restart \n space to pause");
+        ImGui::Text("Q and E for height");
+        ImGui::Text("K to restart  space to pause");
         ImGui::SliderFloat("speed", &simspeed, 0.001f, 10.0f);
-
-        ImGui::SliderFloat("color fade speed", &cold,0.1f,20.0f);
-        ImGui::SliderFloat("color gen speed", &hmulti,0.1f,20.0f);
-      
-       
-        ImGui::SliderFloat("smoothing", &h, 0.0f, 20.0f); {
-            calcKernels();
-        }
-
-        //ImGui::InputFloat("rest density", &rest_density);
-        ImGui::SliderFloat("rest density", &rest_density,0.001f,10.0f);
+        ImGui::SliderFloat("color fade speed", &cold, 0.1f, 20.0f);
+        ImGui::SliderFloat("color gen speed", &hmulti, 0.1f, 20.0f);
+        if (ImGui::SliderFloat("smoothing", &h, 0.0f, 20.0f)) calcKernels();
+        ImGui::SliderFloat("rest density", &rest_density, 0.001f, 10.0f);
         ImGui::InputFloat("pressure f", &pressure);
-        //ImGui::SliderFloat("pressure f", &pressure,0.001f,1000.0f);
-       // ImGui::SliderFloat("near pressure f", &nearpressure,1.0f,5000.0f);
         ImGui::InputFloat("near pressure multiplier", &nearpressure);
-        
         ImGui::InputFloat("viscosity", &visc);
-      
-
-       
-        ImGui::SliderFloat("G", &downf,0.0f,100.0f);
+        ImGui::SliderFloat("G", &downf, 0.0f, 100.0f);
         ImGui::InputFloat("res", &restitution);
-    
-        ImGui::SliderFloat("box x", &maxX, 1.0f, 500.0f); {
 
-            
-            initBoundingBox();
-        };
-        ImGui::SliderFloat("box -x", &minX, -1.0f, -500.0f); {
+        if (ImGui::SliderFloat("box x", &maxX, 1.0f, 500.0f)) initBoundingBox();
+        if (ImGui::SliderFloat("box -x", &minX, -500.0f, -1.0f))  initBoundingBox();
+        if (ImGui::SliderFloat("box y", &maxY, 1.0f, 500.0f)) initBoundingBox();
+        if (ImGui::SliderFloat("box -y", &minY, -500.0f, -1.0f))  initBoundingBox();
 
-            
-            initBoundingBox();
-        };
-        ImGui::SliderFloat("box y", &maxY,1.0f,500.0f);
-        {
-
-            
-            initBoundingBox();
-        }ImGui::SliderFloat("box -y", &minY,-1.0f,-500.0f);
-        {
-
-            
-            initBoundingBox();
-        }
         ImGui::Text("material settings");
-        
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-
-            restartSimulation();
-        }
-        ImGui::InputInt("Total Bodies", &totalBodies);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-
-            restartSimulation();
-        }
-        
-        ImGui::SliderInt("color r", &rc,0,255);
-        ImGui::SliderInt("color g", &gc,0,255);
-        ImGui::SliderInt("color b", &bc,0,255);
-
-
+        ImGui::InputInt("Total Bodies", &totalBodies); 
+            if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
+        ImGui::SliderInt("color r", &rc, 0, 255);
+        ImGui::SliderInt("color g", &gc, 0, 255);
+        ImGui::SliderInt("color b", &bc, 0, 255);
         ImGui::InputFloat("size", &size);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-
-            restartSimulation();
-        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
         ImGui::InputFloat("mass", &mmass);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
+        if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
 
-            restartSimulation();
-        }
         ImGui::Text("physics");
         ImGui::Checkbox("sph", &colisionFun);
-      
         ImGui::Checkbox("update bodies", &updateFun);
         ImGui::Checkbox("max at 60 fps", &option3);
 
-        
-
-        
-
-
-
-
-
-
         ImGui::Text("performance");
-
-
-
-
         ImGui::Text("physics: %5.3f ms", fuc_ms);
         ImGui::InputInt("substeps", &substeps);
-      
-
-
-       
-
         ImGui::End();
         // Timing
         double now = glfwGetTime();
@@ -1072,6 +925,7 @@ int main() {
     printf("bboxVAO=%u bboxVBO=%u bboxProgram=%u\n",
         bboxVAO, bboxVBO, bboxProgram);
 
+    unregisterGLBuffer();
     // CHANGE: Cleanup OpenGL resources
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

@@ -10,10 +10,11 @@ REM --- CUDA path (optional, kept as you had it) ---
 set CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
 
 REM --- Compile CUDA to object in build folder ---
-nvcc -c source\compute.cu -o source\compute.obj -arch=sm_75 --use_fast_math --std=c++17 -O3  -Xptxas=-O3 -Xcompiler="/MD /O2 /Zc:preprocessor /permissive-"
+nvcc -c source\compute.cu -o source\compute.obj -arch=sm_75 --use_fast_math --std=c++17 -O3  -Xptxas=-O3 -Xcompiler="/MD /O2 /Zc:preprocessor /permissive-" -I"D:\visual_studio\fluid_sim\glad\include" -I"D:\visual_studio\fluid_sim\glfw-3.4.bin.WIN64\include"
 REM --use_fast_math
 REM --- Create static library from object ---
 lib /OUT:build\compute.lib source\compute.obj
 
 echo CUDA library built: build\compute.lib
 pause
+ 
