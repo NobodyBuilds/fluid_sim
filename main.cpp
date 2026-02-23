@@ -430,30 +430,9 @@ void restartSimulation() {
     }
 void updatePhysics(float dt) {
     float subDt = dt / (float)substeps;
-
-
     for (int step = 0; step < substeps; step++) {
-        
-       
-        
-        
-      
-
-        
-
-        
-
-
-
         computephysics(count, subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc);
-        
-        
-
     }
-  
-   
-  //  printf("count from gpu: %d\n", count);
-    
 }
 void initBoundingBox() {
 
@@ -821,7 +800,7 @@ int main() {
         ImGui::SliderFloat("color fade speed", &cold, 0.1f, 20.0f);
         ImGui::SliderFloat("color gen speed", &hmulti, 0.1f, 20.0f);
         if (ImGui::SliderFloat("smoothing", &h, 0.0f, 20.0f)) calcKernels();
-        ImGui::SliderFloat("rest density", &rest_density, 0.001f, 10.0f);
+        ImGui::SliderFloat("rest density", &rest_density, 0.1f, 100.0f);
         ImGui::InputFloat("pressure f", &pressure);
         ImGui::InputFloat("near pressure multiplier", &nearpressure);
         ImGui::InputFloat("viscosity", &visc);
