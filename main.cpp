@@ -196,7 +196,7 @@ void main() {
 
     // ---- lighting ----
    float diff = max(dot(normal, uLightDir), 0.20);
-   float light =   0.4 + 0.6 * diff ;
+   float light =   0.3 + 0.7 * diff ;
 float depth=length(vpos -vworld);
 float depthFade = 1.0 - exp(-depth / 150.0);
     vec3 baseColor = vColor.rgb * light  ;
@@ -346,13 +346,18 @@ bool updateFun = true;
 //simspeed
 float simspeed = 1.0f;
 
+float accumulator = 0.f;
+float fps = 0.f, avgFps = 0.f, maxFps = 0.f, minFps = 9999.f;
+float fpsTimer = 0.f;
+int fpsCount = 0;
 
 
 
 //particle settings
 
 int totalBodies = 20000;
-int count=20000 ;
+int maxparticles = totalBodies * 5;
+int count=totalBodies ;
 float size = 1.0f;
 float mmass = 10.0f;
 
@@ -377,18 +382,18 @@ bool nopause = true;
 
 //sph variables
 float h = 3.5f;
-float cellsize = h*1.5f;
+
 float h2 = h * h;
 float rest_density = 3.0f;//density-idk
-float pressure = 1000.0f;//pressure-idk--K
+float pressure = 100.0f;//pressure-idk--K
 float nearpressure = 5000.0f;
-float visc = 5.0f;
+float visc = 6.0f;
 bool heateffect = true;
 
 float downf = 1.50f;
 float pi = 3.14159265358979323846f;
-int flowcount = 5;
-bool addparticle = false;
+
+
 //kernels
 float pollycoef6;
 float spikycoef;
@@ -412,26 +417,32 @@ int rc = 25;
 int gc = 50;
 int bc = 255;
 //////////////////////////////////////
-
-
+int samplecount=totalBodies;
+int flowcount = 5;
 //register particles
-
+bool addParticle = false;
 void restartSimulation() {
     
     count = totalBodies;
     freeDynamicGrid();
     freegpu();
-    initgpu(count);
-	initDynamicGrid(count);
+    initgpu(maxparticles);
+	initDynamicGrid(maxparticles);
     registerBodies(count, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
   
     
 
     }
+float sample_ms = 0.0f;
 void updatePhysics(float dt) {
+    if (fuc_ms > 16.67f|| avgFps<60 )addParticle = false;
     float subDt = dt / (float)substeps;
     for (int step = 0; step < substeps; step++) {
-        computephysics(count, subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc);
+        computephysics(count, subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc,addParticle,size,mmass,&samplecount,flowcount,&sample_ms);
+    }
+    if (addParticle == true) {
+        totalBodies = samplecount;
+        count = samplecount;
     }
 }
 void initBoundingBox() {
@@ -497,6 +508,7 @@ void drawAll() {
     // Ensure VBO is large enough (first frame, or after MaxFps growth).
    // If it had to grow, re-register it with CUDA.
     if (ensureVBOCapacity((size_t)count * 3)) {
+        unregisterGLBuffer();
         registerGLBuffer(vbo);
     }
 
@@ -746,26 +758,22 @@ int main() {
 
     calcKernels();
     initBoundingBox();
-    initgpu(totalBodies);
-    initDynamicGrid(totalBodies);
+    initgpu(maxparticles);
+    initDynamicGrid(maxparticles);
 
     ensureVBOCapacity((size_t)500000*3);
     registerGLBuffer(vbo);
 
-    registerBodies(totalBodies, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+    registerBodies(count, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
     
-    float accumulator = 0.f;
-    float fps = 0.f, avgFps = 0.f, maxFps = 0.f, minFps = 9999.f;
-    float fpsTimer = 0.f;
-    int fpsCount = 0;
-
-
+   
+	restartSimulation();
     const float targetFPS = 60.0f;
     const float upperThreshold = 65.0f;
     const float lowerThreshold = 55.0f;
    
    
-   
+    float debugtime = 0.0f;
 
    
     
@@ -779,7 +787,7 @@ int main() {
     view.zoom = 1.0f;
 
     while (!glfwWindowShouldClose(window)) {
-
+       
         glfwPollEvents();
 
 
@@ -799,21 +807,26 @@ int main() {
         ImGui::SliderFloat("speed", &simspeed, 0.001f, 10.0f);
         ImGui::SliderFloat("color fade speed", &cold, 0.1f, 20.0f);
         ImGui::SliderFloat("color gen speed", &hmulti, 0.1f, 20.0f);
-        if (ImGui::SliderFloat("smoothing", &h, 0.0f, 20.0f)) calcKernels();
-        ImGui::SliderFloat("rest density", &rest_density, 0.1f, 100.0f);
+        if (ImGui::SliderFloat("smoothing", &h, 0.001f, 20.0f)) calcKernels();
+       // ImGui::SliderFloat("rest density", &rest_density, 0.281f,1000.0f);
+        ImGui::InputFloat("rest density", &rest_density);
         ImGui::InputFloat("pressure f", &pressure);
         ImGui::InputFloat("near pressure multiplier", &nearpressure);
         ImGui::InputFloat("viscosity", &visc);
-        ImGui::SliderFloat("G", &downf, 0.0f, 100.0f);
+        ImGui::SliderFloat("G", &downf, 1.0f, 1000.0f);
         ImGui::InputFloat("res", &restitution);
 
         if (ImGui::SliderFloat("box x", &maxX, 1.0f, 500.0f)) initBoundingBox();
-        if (ImGui::SliderFloat("box -x", &minX, -500.0f, -1.0f))  initBoundingBox();
+        if (ImGui::SliderFloat("box -x", &minX, -1.0f, -500.0f))  initBoundingBox();
         if (ImGui::SliderFloat("box y", &maxY, 1.0f, 500.0f)) initBoundingBox();
-        if (ImGui::SliderFloat("box -y", &minY, -500.0f, -1.0f))  initBoundingBox();
+        if (ImGui::SliderFloat("box -y", &minY, -1.0f, -500.0f))  initBoundingBox();
+        if (ImGui::SliderFloat("box z", &maxz, 1.0f, 500.0f))  initBoundingBox();
+        if (ImGui::SliderFloat("box -z", &minZ, 0.0f, -100.0f))  initBoundingBox();
 
         ImGui::Text("material settings");
         ImGui::InputInt("Total Bodies", &totalBodies); 
+            if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
+        ImGui::InputInt("max possible Bodies", &maxparticles); 
             if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
         ImGui::SliderInt("color r", &rc, 0, 255);
         ImGui::SliderInt("color g", &gc, 0, 255);
@@ -826,6 +839,10 @@ int main() {
         ImGui::Text("physics");
         ImGui::Checkbox("sph", &colisionFun);
         ImGui::Checkbox("update bodies", &updateFun);
+        ImGui::Checkbox("add particles", &addParticle);
+        if (addParticle == true) {
+            ImGui::InputInt("flow count", &flowcount);
+        }
         ImGui::Checkbox("max at 60 fps", &option3);
 
         ImGui::Text("performance");
@@ -847,8 +864,9 @@ int main() {
         wy = camera.position.y;
         wz = camera.position.z;
         
+        
         float effectiveDt = fixedDt * simspeed;
-        auto t0 = std::chrono::high_resolution_clock::now();
+
         while (accumulator >= fixedDt) {
 
 
@@ -860,23 +878,18 @@ int main() {
 
             accumulator -= fixedDt;
         }
-        auto t1 = std::chrono::high_resolution_clock::now();
-        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        
 
-        fuc_ms_avg += ms;
-        fuc_samples++;
-        if (fuc_samples >= 60) {   // 1 second @ 60 FPS
-            fuc_ms = fuc_ms_avg / fuc_samples;
-            fuc_ms_avg = 0.0;
-            fuc_samples = 0;
+       
+        /*if (debugtime > 0.50f) {
+            printf("ms %3f\n", sample_ms);
+            debugtime = 0.0f;
         }
-        if (option3) {
-            MaxFps(fuc_ms);
-        }
+        debugtime += effectiveDt;*/
        
         // CHANGE: OpenGL rendering instead of SFML
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+      
 
 
 
@@ -888,8 +901,8 @@ int main() {
         glfwSwapBuffers(window);
 
         // FPS measurement
-        double elapsed = glfwGetTime() - fpsClock;
-        fpsClock = glfwGetTime();
+        double elapsed = now - fpsClock;
+        fpsClock = now;
         fps = (elapsed > 0.0) ? 1.0 / elapsed : fps;
         fpsTimer += (float)elapsed;
         fpsCount++;
@@ -900,6 +913,7 @@ int main() {
             fpsTimer = 0.f;
             fpsCount = 0;
         }
+       fuc_ms= (avgFps > 0.0f) ? 1000.0f / avgFps : 0.0f;
     }
     printf("bboxVAO=%u bboxVBO=%u bboxProgram=%u\n",
         bboxVAO, bboxVBO, bboxProgram);
@@ -917,6 +931,7 @@ int main() {
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
 
     return 0;
 }
