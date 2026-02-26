@@ -10,8 +10,9 @@ not perfect yet!
 so expect errors or bugs and feel free to give feedback
 -----------------------
 <img width="733" height="289" alt="Screenshot 2026-02-26 204642" src="https://github.com/user-attachments/assets/c0245bb1-d76b-4450-b117-6a3be69070de" />
+<img width="751" height="337" alt="Screenshot 2026-02-26 204618" src="https://github.com/user-attachments/assets/b0481854-770f-45e4-bed3-7042e9e9934b" />
 
-<img width="474" height="314" alt="Screenshot 2026-02-26 204604" src="https://github.com/user-attachments/assets/0074a569-32e8-45c2-9d23-273b08714a28" />
+
 
 https://github.com/user-attachments/assets/f57c37d3-220c-47be-bcfe-0d024ce1de9c
 
