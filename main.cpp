@@ -359,7 +359,7 @@ int totalBodies = 20000;
 int maxparticles = totalBodies * 5;
 int count=totalBodies ;
 float size = 1.0f;
-float mmass = 10.0f;
+float mmass = 1.0f;
 
 int A = 0;
 
@@ -390,7 +390,7 @@ float nearpressure = 5000.0f;
 float visc = 6.0f;
 bool heateffect = true;
 
-float downf = 1.50f;
+float downf = 150.0f;
 float pi = 3.14159265358979323846f;
 
 
