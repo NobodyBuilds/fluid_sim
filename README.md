@@ -8,15 +8,14 @@ This project focuses on **real‑time fluid physics**, tunable physical paramete
 ## notice
 not perfect yet!
 so expect errors or bugs and feel free to give feedback
+-----------------------
+<img width="733" height="289" alt="Screenshot 2026-02-26 204642" src="https://github.com/user-attachments/assets/c0245bb1-d76b-4450-b117-6a3be69070de" />
 
+<img width="474" height="314" alt="Screenshot 2026-02-26 204604" src="https://github.com/user-attachments/assets/0074a569-32e8-45c2-9d23-273b08714a28" />
 
-<img width="749" height="373" alt="Screenshot 2026-02-12 222005" src="https://github.com/user-attachments/assets/60f002f7-3f23-4da0-a18b-789749b212a9" />
+https://github.com/user-attachments/assets/f57c37d3-220c-47be-bcfe-0d024ce1de9c
 
-
-<img width="822" height="444" alt="Screenshot 2026-02-12 221501" src="https://github.com/user-attachments/assets/d614d5bb-d022-42aa-8c40-82fb5c58ec28" />
-
-
-
+-------------------------
 ---
 ## comtrols
 wasd for camera movement
