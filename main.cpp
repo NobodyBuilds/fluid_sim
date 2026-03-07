@@ -10,7 +10,7 @@
 
 
 #include <glm/gtc/type_ptr.hpp>
-
+#include"fluid_sim/ui.h"
 #include <string>
 #include <iostream>
 #include <vector>
@@ -22,14 +22,15 @@
 #include <omp.h>
 #include <unordered_map>
 #include "struct.h"
+#include"fluid_sim/settings.h"
 #include"source/compute.h"
+#include "fluid_sim/main.h"
 #define _USE_MATH_DEFINES
 
 
-
+//param settings;
 //dt
 
-float fixedDt = 1 / 120.0f;
 
 
 const unsigned int screenWidth = 1800;
@@ -37,7 +38,7 @@ const unsigned int screenHeight = 900;
 
 static double fuc_ms_avg = 0.0;
 static int fuc_samples = 0;
-static double fuc_ms = 0.0;
+
 // CHANGE: Replaced sf::View with custom View struct
 struct View {
     float cx = screenWidth * 0.5f;
@@ -58,10 +59,9 @@ struct View {
 
 
 
-const float M_PI = 3.14159265359f;
 
-constexpr float MAX_HEAT = 100.0f;
-constexpr float HEAT_TO_COLOR = 2.0f;
+
+
 
 
 struct Camera {
@@ -339,110 +339,48 @@ inline void worldToScreen_topLeft(float wx, float wy, float& sx, float& sy, cons
 
 //ui////////////
 //functions
-bool colisionFun = true;
 
-bool updateFun = true;
 
-//simspeed
-float simspeed = 1.0f;
 
-float accumulator = 0.f;
-float fps = 0.f, avgFps = 0.f, maxFps = 0.f, minFps = 9999.f;
-float fpsTimer = 0.f;
-int fpsCount = 0;
 
 
 
 //particle settings
 
-int totalBodies = 20000;
-int maxparticles = totalBodies * 5;
-int count=totalBodies ;
-float size = 1.0f;
-float mmass = 1.0f;
 
-int A = 0;
-
-
-int substeps = 1;
 
 //camera
 float y, p;
 
 //heat
-float cold = 4.500f;
-float cr = 4.0f;
-float hmulti = 15.0f;
 
-
-//world cords
-float wx, wy, wz;
-
-bool nopause = true;
-
-//sph variables
-float h = 3.5f;
-
-float h2 = h * h;
-float rest_density = 3.0f;//density-idk
-float pressure = 100.0f;//pressure-idk--K
-float nearpressure = 5000.0f;
-float visc = 6.0f;
-bool heateffect = true;
-
-float downf = 150.0f;
-float pi = 3.14159265358979323846f;
-
-
-//kernels
-float pollycoef6;
-float spikycoef;
-float Sdensity;
-float ndensity;
-float spikygradv;
-float viscK;
 //arrays 
 
 
 
-int star = 0;
 
-float minX = -50.0f, maxX = 250.0f;
-float minY = -50.0f, maxY = 50.0f;
-float restitution = 0.8f;
-float minZ = 0.0f;
-float maxz = 100.0f;
-
-int rc = 25;
-int gc = 50;
-int bc = 255;
-//////////////////////////////////////
-int samplecount=totalBodies;
-int flowcount = 5;
-//register particles
-bool addParticle = false;
 void restartSimulation() {
     
-    count = totalBodies;
+    settings.count = settings.totalBodies;
     freeDynamicGrid();
     freegpu();
-    initgpu(maxparticles);
-	initDynamicGrid(maxparticles);
-    registerBodies(count, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+    initgpu(settings.maxparticles);
+	initDynamicGrid(settings.maxparticles);
+    registerBodies();
   
     
 
     }
-float sample_ms = 0.0f;
+
 void updatePhysics(float dt) {
-    if (fuc_ms > 16.67f|| avgFps<60 )addParticle = false;
-    float subDt = dt / (float)substeps;
-    for (int step = 0; step < substeps; step++) {
-        computephysics(count, subDt, h, h2, pollycoef6, spikycoef, spikygradv, viscK, Sdensity, ndensity, rest_density, pressure, nearpressure, hmulti, cold, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ, restitution, downf, star, visc,addParticle,size,mmass,&samplecount,flowcount,&sample_ms);
+    if (settings.fuc_ms > 16.67f|| settings.avgFps<60 )settings.addParticle = false;
+    float subDt = dt / (float)settings.substeps;
+    for (int step = 0; step < settings.substeps; step++) {
+        computephysics(subDt);
     }
-    if (addParticle == true) {
-        totalBodies = samplecount;
-        count = samplecount;
+    if (settings.addParticle == true) {
+        settings.totalBodies = settings.samplecount;
+        settings.count = settings.samplecount;
     }
 }
 void initBoundingBox() {
@@ -453,22 +391,22 @@ void initBoundingBox() {
     
     float boxVerts[] = {
         // bottom rectangle
-        minX, minY, minZ,   maxX, minY, minZ,
-        maxX, minY, minZ,   maxX, maxY, minZ,
-        maxX, maxY, minZ,   minX, maxY, minZ,
-        minX, maxY, minZ,   minX, minY, minZ,
+        settings.minX, settings.minY, settings.minZ,   settings.maxX, settings.minY, settings.minZ,
+        settings.maxX, settings.minY, settings.minZ,   settings.maxX, settings.maxY, settings.minZ,
+        settings.maxX, settings.maxY, settings.minZ,   settings.minX, settings.maxY, settings.minZ,
+        settings.minX, settings.maxY, settings.minZ,   settings.minX, settings.minY, settings.minZ,
 
         // top rectangle
-        minX, minY, maxz,   maxX, minY, maxz,
-        maxX, minY, maxz,   maxX, maxY, maxz,
-        maxX, maxY, maxz,   minX, maxY, maxz,
-        minX, maxY, maxz,   minX, minY, maxz,
+        settings.minX, settings.minY, settings.maxz,   settings.maxX, settings.minY, settings.maxz,
+        settings.maxX, settings.minY, settings.maxz,   settings.maxX, settings.maxY, settings.maxz,
+        settings.maxX, settings.maxY, settings.maxz,   settings.minX, settings.maxY, settings.maxz,
+        settings.minX, settings.maxY, settings.maxz,   settings.minX, settings.minY, settings.maxz,
 
         // vertical edges
-        minX, minY, minZ,   minX, minY, maxz,
-        maxX, minY, minZ,   maxX, minY, maxz,
-        maxX, maxY, minZ,   maxX, maxY, maxz,
-        minX, maxY, minZ,   minX, maxY, maxz
+        settings.minX, settings.minY, settings.minZ,   settings.minX, settings.minY, settings.maxz,
+        settings.maxX, settings.minY, settings.minZ,   settings.maxX, settings.minY, settings.maxz,
+        settings.maxX, settings.maxY, settings.minZ,   settings.maxX, settings.maxY, settings.maxz,
+        settings.minX, settings.maxY, settings.minZ,   settings.minX, settings.maxY, settings.maxz
     };
 
     glGenVertexArrays(1, &bboxVAO);
@@ -484,19 +422,19 @@ void initBoundingBox() {
     glBindVertexArray(0);
 }
 void calcKernels() {
-    float h2 = h * h;
-    float h3 = h * h * h;
+    float h2 = settings.h * settings.h;
+    float h3 = settings.h * settings.h * settings.h;
    // float h4 = h2 * h2;
     float h6 = h3 * h3;
     float h9 = h3 * h3 * h3;
 
     
-    pollycoef6 = 315.0f / (64.0f * pi * h9);
-    Sdensity = pollycoef6 * h6;//self density at r=0
-    spikycoef = 15.0f / (pi * h6);
-    ndensity = spikycoef * h3;//near self density at r=0
-    spikygradv = -45 / (pi * h6);
-    viscK = 45 / (pi * h6);
+    settings.pollycoef6 = 315.0f / (64.0f * settings.pi * h9);
+    settings.Sdensity = settings.pollycoef6 * h6;//self density at r=0
+    settings.spikycoef = 15.0f / (settings.pi * h6);
+    settings.ndensity = settings.spikycoef * h3;//near self density at r=0
+    settings.spikygradv = -45 / (settings.pi * h6);
+    settings.viscosity = 45 / (settings.pi * h6);
 }
 
 
@@ -507,7 +445,7 @@ void drawAll() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // Ensure VBO is large enough (first frame, or after MaxFps growth).
    // If it had to grow, re-register it with CUDA.
-    if (ensureVBOCapacity((size_t)count * 3)) {
+    if (ensureVBOCapacity((size_t)settings.count * 3)) {
         unregisterGLBuffer();
         registerGLBuffer(vbo);
     }
@@ -535,10 +473,10 @@ void drawAll() {
     glUniformMatrix4fv(loc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniformMatrix4fv(loc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
     glUniform3fv(loc_uLightDir, 1, glm::value_ptr(lightDir));
-    glUniform3f(loc_uCameraPos, wx, wy, wz);
+    glUniform3f(loc_uCameraPos, settings.wx, settings.wy, settings.wz);
 
     glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, count * 3);
+    glDrawArrays(GL_TRIANGLES, 0, settings.count * 3);
     glBindVertexArray(0);
     glUseProgram(0);
 
@@ -554,32 +492,7 @@ void drawAll() {
     glBindVertexArray(0);
     glUseProgram(0);
 }
-bool option3 = false;
-void MaxFps(double avgMs) {
-    const float target = 16.67f;
-    const int minBodies = 100;
-    const int maxBodies = 500000;
 
-    float error = avgMs - target;
-
-    if (fabs(error) < 0.5f) return; // already stable
-
-    float adjustFactor = 0.05f; // 5% per update
-
-    if (error > 0.0f) {
-        // too slow → reduce bodies
-        totalBodies = (int)(totalBodies * (1.0f - adjustFactor));
-    }
-    else {
-        // too fast → add bodies
-        totalBodies = (int)(totalBodies * (1.0f + adjustFactor));
-    }
-
-    totalBodies = std::clamp(totalBodies, minBodies, maxBodies);
-
-    restartSimulation();
-   
-}
 void updateCameraVectors(Camera& cam)
 {
     float yawRad = glm::radians(cam.yaw);
@@ -689,11 +602,11 @@ void buttons(GLFWwindow* window) {
     
     if(down && !predown)
     {
-        if (nopause == true) {
-            nopause = false;
+        if (settings.nopause == true) {
+            settings.nopause = false;
         }
-        else if (nopause == false) {
-            nopause = true;
+        else if (settings.nopause == false) {
+            settings.nopause = true;
         }
     }
     predown = down;
@@ -758,13 +671,13 @@ int main() {
 
     calcKernels();
     initBoundingBox();
-    initgpu(maxparticles);
-    initDynamicGrid(maxparticles);
+    initgpu(settings.maxparticles);
+    initDynamicGrid(settings.maxparticles);
 
     ensureVBOCapacity((size_t)500000*3);
     registerGLBuffer(vbo);
 
-    registerBodies(count, h, size, mmass, rc, gc, bc, maxX, maxY, maxz, minX, minY, minZ);
+    registerBodies();
     
    
 	restartSimulation();
@@ -790,93 +703,37 @@ int main() {
        
         glfwPollEvents();
 
+        ui_init();
+       
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        // UI 
-        ImGui::Begin("Settings");
-        ImGui::Text("FPS: %.0f (Min: %.0f / Max: %.0f)", avgFps, minFps, maxFps);
-        ImGui::Text("physics: %5.3f ms", fuc_ms);
-        ImGui::Text("x:%.0f y %.0f z %.0f", wx, wy, wz);
-        ImGui::Text("variables");
-        ImGui::Text("wasd for movement");
-        ImGui::Text("Q and E for height");
-        ImGui::Text("K to restart  space to pause");
-        ImGui::SliderFloat("speed", &simspeed, 0.001f, 10.0f);
-        ImGui::SliderFloat("color fade speed", &cold, 0.1f, 20.0f);
-        ImGui::SliderFloat("color gen speed", &hmulti, 0.1f, 20.0f);
-        if (ImGui::SliderFloat("smoothing", &h, 0.001f, 20.0f)) calcKernels();
-       // ImGui::SliderFloat("rest density", &rest_density, 0.281f,1000.0f);
-        ImGui::InputFloat("rest density", &rest_density);
-        ImGui::InputFloat("pressure f", &pressure);
-        ImGui::InputFloat("near pressure multiplier", &nearpressure);
-        ImGui::InputFloat("viscosity", &visc);
-        ImGui::SliderFloat("G", &downf, 1.0f, 1000.0f);
-        ImGui::InputFloat("res", &restitution);
-
-        if (ImGui::SliderFloat("box x", &maxX, 1.0f, 500.0f)) initBoundingBox();
-        if (ImGui::SliderFloat("box -x", &minX, -1.0f, -500.0f))  initBoundingBox();
-        if (ImGui::SliderFloat("box y", &maxY, 1.0f, 500.0f)) initBoundingBox();
-        if (ImGui::SliderFloat("box -y", &minY, -1.0f, -500.0f))  initBoundingBox();
-        if (ImGui::SliderFloat("box z", &maxz, 1.0f, 500.0f))  initBoundingBox();
-        if (ImGui::SliderFloat("box -z", &minZ, 0.0f, -100.0f))  initBoundingBox();
-
-        ImGui::Text("material settings");
-        ImGui::InputInt("Total Bodies", &totalBodies); 
-            if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
-        ImGui::InputInt("max possible Bodies", &maxparticles); 
-            if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
-        ImGui::SliderInt("color r", &rc, 0, 255);
-        ImGui::SliderInt("color g", &gc, 0, 255);
-        ImGui::SliderInt("color b", &bc, 0, 255);
-        ImGui::InputFloat("size", &size);
-        if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
-        ImGui::InputFloat("mass", &mmass);
-        if (ImGui::IsItemDeactivatedAfterEdit()) restartSimulation();
-
-        ImGui::Text("physics");
-        ImGui::Checkbox("sph", &colisionFun);
-        ImGui::Checkbox("update bodies", &updateFun);
-        ImGui::Checkbox("add particles", &addParticle);
-        if (addParticle == true) {
-            ImGui::InputInt("flow count", &flowcount);
-        }
-        ImGui::Checkbox("max at 60 fps", &option3);
-
-        ImGui::Text("performance");
-        ImGui::Text("physics: %5.3f ms", fuc_ms);
-        ImGui::InputInt("substeps", &substeps);
-        ImGui::End();
         // Timing
         double now = glfwGetTime();
         double frameTime = now - lastTime;
         lastTime = now;
-        accumulator += (float)frameTime;
+        settings.accumulator += (float)frameTime;
         float dt = (float)frameTime;
         
         updateCameraMovement(window, dt);
         buttons(window);
         y = camera.yaw;
         p = camera.pitch;
-        wx = camera.position.x;
-        wy = camera.position.y;
-        wz = camera.position.z;
+        settings.wx = camera.position.x;
+        settings.wy = camera.position.y;
+        settings.wz = camera.position.z;
         
         
-        float effectiveDt = fixedDt * simspeed;
+        float effectiveDt = settings.fixedDt * settings.simspeed;
 
-        while (accumulator >= fixedDt) {
+        while (settings.accumulator >= settings.fixedDt) {
 
 
-            if (nopause == true) {
+            if (settings.nopause == true) {
                 updatePhysics(effectiveDt);
             }
 
 
 
-            accumulator -= fixedDt;
+            settings.accumulator -= settings.fixedDt;
         }
         
 
@@ -903,17 +760,17 @@ int main() {
         // FPS measurement
         double elapsed = now - fpsClock;
         fpsClock = now;
-        fps = (elapsed > 0.0) ? 1.0 / elapsed : fps;
-        fpsTimer += (float)elapsed;
-        fpsCount++;
-        if (fps > maxFps) maxFps = (float)fps;
-        if (fps < minFps) minFps = (float)fps;
-        if (fpsTimer >= 0.5f) {
-            avgFps = fpsCount / fpsTimer;
-            fpsTimer = 0.f;
-            fpsCount = 0;
+        settings.fps = (elapsed > 0.0) ? 1.0 / elapsed : settings.fps;
+        settings.fpsTimer += (float)elapsed;
+        settings.fpsCount++;
+        if (settings.fps > settings.maxFps) settings.maxFps = (float)settings.fps;
+        if (settings.fps < settings.minFps) settings.minFps = (float)settings.fps;
+        if (settings.fpsTimer >= 0.5f) {
+            settings.avgFps = settings.fpsCount / settings.fpsTimer;
+            settings.fpsTimer = 0.f;
+            settings.fpsCount = 0;
         }
-       fuc_ms= (avgFps > 0.0f) ? 1000.0f / avgFps : 0.0f;
+       settings.fuc_ms= (settings.avgFps > 0.0f) ? 1000.0f / settings.avgFps : 0.0f;
     }
     printf("bboxVAO=%u bboxVBO=%u bboxProgram=%u\n",
         bboxVAO, bboxVBO, bboxProgram);

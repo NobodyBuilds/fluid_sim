@@ -12,17 +12,18 @@
 #include<curand_kernel.h>
 #include<device_launch_parameters.h>
 #include<iostream>
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+
 #include<math_constants.h>
 #include<math_functions.h>
+#include"\visual_studio\fluid_sim\fluid_sim\settings.h"
 
 #include <cub/cub.cuh>
+
 
 #define BLOCKS(n) ((n + 255) / 256)
 #define THREADS 256
 #define MAX_PARTICLES_PER_CELL 256
-
+//param settings;
 
 static void* d_sortTempStorage = nullptr;
 static size_t sortTempBytes = 0;
@@ -567,19 +568,6 @@ __global__ void scatterForcesKernel(
 
 //sph-functions
 
-__global__ void self_pressure(int n,  float k, float rest_density,float4* fluidProp,float k_) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    bool debug = 0;
-   // bool debug = (i == 0);
-    float4 fluid = __ldg(&fluidProp[i]); 
-    float p = fminf(k * (fluid.x - rest_density), 0.0f);// x=density
-    float n_p = fluid.y * k_;//y= near density
-    fluidProp[i] = make_float4(fluid.x, fluid.y, p, n_p);
-    if (debug && p < 0)printf("pressure value from pressurefromdensity kernel is negative\n");
-    if (debug && p > 0)printf("pressure value from pressurefromdensity kernel is postive\n");
-
-}
 
 
 __global__ void computeDensity(
@@ -596,7 +584,7 @@ __global__ void computeDensity(
     int* cellstart,
     int* cellend,
     int* particleindex,
-    float K_,float pollycoef6,float spikycoef,float sdensity,float ndensity
+    float K_,float k,float pollycoef6,float spikycoef,float sdensity,float ndensity,bool clamping
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
@@ -695,9 +683,16 @@ __global__ void computeDensity(
             }
         }
     }
-
+    float pp, n_p;
+    if(clamping){
+		pp = fmaxf(k * (rho - rest_density), 0.0f);// x=density)
+    }
+    else {
+         pp = k * (rho - rest_density);
+    }
+     n_p = rhon * K_;//y= near density
    
-    fluidProp[i] = make_float4(fmaxf(rho, mindensity), fmaxf(rhon, mindensity* 0.1f), 0.0f, 0.0f);
+    fluidProp[i] = make_float4(fmaxf(rho, mindensity), fmaxf(rhon, mindensity* 0.1f),pp, n_p);
     /*if (i == 0) {
         float W_zero = densitykernel(0.0f, h);
         printf("\n=== DENSITY DEBUG ===\n");
@@ -735,7 +730,7 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY
+    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,int pressuremode
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -869,7 +864,12 @@ __global__ void computePressure(
                         //as rest density is incrreases particle distance themselves from others repulsion dominates
                         //high k is very jittery ,even explodes,low k is kinda okkay but jitter at surface
                         float m_j = pj.w;//particle mass stored in pos.w
-                        force += -m_j * pressureterm * gradW * dir;
+                        if (pressuremode == 0) {
+                            force += -m_j * pressureterm * gradW * dir;
+                        }
+                        else if (pressuremode == 1) {
+                            force += m_j * pressureterm * gradW * dir;
+                        }
                         force += -m_j* npressureterm * gradW * dir;
                         float4 v2 = __ldg(&vel[j]);
                         float3 vj = make_float3(v2.x, v2.y, v2.z);
@@ -925,7 +925,7 @@ __global__ void computePressure(
 
 //update
 __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4* vel ,float4* acl,
-    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int star,float heatMultipler,float heatDecay,float initial_r,float initial_b,float initial_g,uchar4* color
+    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int star,float heatMultipler,float heatDecay,uchar4* color,bool heat
 ) {
     // Vec3 acc_new;
 
@@ -936,33 +936,52 @@ __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4
     float4 vl = __ldg(&vel[i]);
     float4 a  = __ldg(&acl[i]);
 
+    if (heat) {
+        float3 v = { vl.x,vl.y,vl.z };
+        float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
 
-    float3 v = { vl.x,vl.y,vl.z };
-    float speed = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+        float heat = speed * 0.5f;
+        // heat += mass[i];
+        a.w += (heat * heatMultipler) * dt; //acl.w=heat;
 
-    float heat = speed * 0.5f;
-    // heat += mass[i];
-    a.w += (heat * heatMultipler) * dt; //acl.w=heat;
+        a.w *= expf(-heatDecay * dt);
+        a.w = clamp(a.w, 0.0f, 100.0f);
+        uchar4 col = color[i];   // load once to get col.w
+        float t = clamp(a.w / 100.0f, 0.0f, 1.0f);
+        t = pow(t, 0.95f);
 
-    a.w *= expf(-heatDecay * dt);
-    a.w = clamp(a.w, 0.0f, 100.0f);
-    float t = clamp(a.w / 100.0f, 0.0f, 1.0f);
-    t = pow(t, 0.95f);
-    float floatr = (float)initial_r;
-    float floatb = (float)initial_b;
-    float floatg = (float)initial_g;
+        float R, G, B;
 
-    float R = lerp(floatr, 255.0f, t);
-    float G = lerp(floatg, 0.0f, t);
-    float B = lerp(floatb, 0.0f, t);
-
-    uchar4 col = color[i];   // load once to get col.w
-    color[i] = make_uchar4(
-        (unsigned char)clamp((int)R, 0, 255),
-        (unsigned char)clamp((int)G, 0, 255),
-        (unsigned char)clamp((int)B, 0, 255),
-        col.w);
-
+        if (t < 0.35f) {
+            float tt = t / 0.25f;
+            R = 0.0f;
+            G = tt * 255.0f;
+            B = 255.0f;
+        }
+        else if (t < 0.55f) {
+            float tt = (t - 0.25f) / 0.25f;
+            R = 0.0f;
+            G = 255.0f;
+            B = (1.0f - tt) * 255.0f;
+        }
+        else if (t < 0.85f) {
+            float tt = (t - 0.5f) / 0.25f;
+            R = tt * 255.0f;
+            G = 255.0f;
+            B = 0.0f;
+        }
+        else {
+            float tt = (t - 0.75f) / 0.25f;
+            R = 255.0f;
+            G = (1.0f - tt) * 255.0f;
+            B = 0.0f;
+        }
+        color[i] = make_uchar4(
+            (unsigned char)clamp((int)R, 0, 255),
+            (unsigned char)clamp((int)G, 0, 255),
+            (unsigned char)clamp((int)B, 0, 255),
+            col.w);
+    }
 
       
     
@@ -1113,7 +1132,7 @@ __global__ void addparticles(int n, float h,
     int k = n + i;
 
     float x, y, z;
-    float particle_spacing = h * 1.20f;
+    float particle_spacing = h * 1.1f;
 
     int particles_per_side = (int)ceil(cbrt((float)flowcount));
     int maxXcount = (int)((maxX - minX) / particle_spacing);
@@ -1256,24 +1275,21 @@ __global__ void registerKernel(int n,float h,
     color[i].z = B;
     color[i].w = 0; //iscenter
 }
-extern "C" void registerBodies(int n,float h,float Size,float Mass,int R,int G,int B, float maxX, float maxY, float maxz, float minX, float minY, float minZ ) {
-    int Block = (n + THREADS - 1) / THREADS;
-    registerKernel << < Block, THREADS >> > (n,h,Size,Mass,R,G,B,maxX,maxY,maxz,minX,minY,minZ,
+extern "C" void registerBodies() {
+    int Block = (settings.count + THREADS - 1) / THREADS;
+    registerKernel << < Block, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass, settings.rc, settings.gc, settings.bc, settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
                                                  positions,velocity,accelration,fluidProp,color);  
 }
 
-extern "C" void computephysics(int n, float dt, float h, float h2, float pollycoef6, float spikycoef, float gradv, float viscK, float sdensity, float ndensity, float rest_density, float pressure, float k_,
-    float hmulti, float cold, float br, float bg, float bb, float maxX, float maxY, float maxZ, float minX, float minY, float minZ, float restitution, float downwardforce, int isstar, float visc,bool ap,  float Size, float Mass,int* samplecount,int flowcount,float* MS) {
-    int blocks = (n + THREADS - 1) / THREADS;
-    int totalBodies = n;
+extern "C" void computephysics(float dt) {
+    int blocks = (settings.count + THREADS - 1) / THREADS;
+    int totalBodies = settings.count;
     cudaError_t err;
-    float d_cellsize = h * 1.0f;//tweaak it gng
-
+    float d_cellsize = settings.h * 1.0f;//tweaak it gng
      cudaEvent_t start, stop;
-     cudaEventCreate(&start);
-     cudaEventCreate(&stop);
-    if (ap == true) {
-        d_count = n;
+    
+    if (settings.addParticle == true) {
+        d_count = settings.count;
 
        // printf("gpu count: %d\n", d_count);
     }
@@ -1282,46 +1298,25 @@ extern "C" void computephysics(int n, float dt, float h, float h2, float pollyco
     //builg gird
    // printf("count %d\n", n);
     cudaGraphicsUnmapResources(1, &g_vboResource, 0);
-   // cudaEventRecord(start);
-    buildDynamicGrid(n, d_cellsize, positions);
+    if (settings.colisionFun) {
+        buildDynamicGrid(settings.count, d_cellsize, positions);
 
-    // cudaEventRecord(stop);
-    // cudaEventSynchronize(stop);
-    // cudaEventElapsedTime(&ms, start, stop);
-    // printf("Grid build: %.2f ms\n", ms);
 
-     //density
-    // cudaEventRecord(start);
-    computeDensity << <blocks, THREADS >> > (totalBodies, h, d_cellsize, positions_sorted, fluidProp_sorted, HASH_TABLE_SIZE, rest_density, h2, d_cellStart, d_cellEnd, d_particleIndex, k_, pollycoef6, spikycoef, sdensity, ndensity);
-   // cudaEventRecord(stop);
-   // cudaEventSynchronize(stop);
-   // cudaEventElapsedTime(&ms, start, stop);
-   // printf("Density: %.2f ms\n", ms);
+        computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, fluidProp_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity,settings.pressureClamp);
 
-    //pfd
-   // cudaEventRecord(start);
-    self_pressure << <blocks, THREADS >> > (totalBodies, pressure, rest_density,fluidProp_sorted, k_);
-    //pressure
-    computePressure << <blocks, THREADS >> > (totalBodies, h, d_cellsize, pressure, rest_density,positions_sorted,accelration_sorted,velocity_sorted,fluidProp_sorted, visc, HASH_TABLE_SIZE, h2, d_cellStart, d_cellEnd, d_particleIndex, gradv, viscK, pollycoef6,minZ,minX,minY,maxX,maxY);
-    // cudaEventRecord(stop);
-    // cudaEventSynchronize(stop);
-    // cudaEventElapsedTime(&ms, start, stop);
-    // printf("Pressure: %.2f ms\n", ms);
-	scatterForcesKernel << <blocks, THREADS >> > (totalBodies, d_particleIndex, accelration_sorted, accelration);
-     //intigration
-    // cudaEventRecord(start);
-    updateKernel << < blocks, THREADS >> > (dt, totalBodies, cold, positions,velocity,accelration, minX, maxX, minY, maxY, minZ, maxZ, restitution, downwardforce, isstar,  hmulti, cold, br, bb, bg, color);
-    //////////////////////
-   // cudaEventRecord(stop);
-   // cudaEventSynchronize(stop);
-   // cudaEventElapsedTime(&ms, start, stop);
-   // printf("Update: %.2f ms\n", ms);
+        computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.pressure, settings.rest_density, positions_sorted, accelration_sorted, velocity_sorted, fluidProp_sorted, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY,settings.pressureMode);
 
-    if (ap == true) {
-        addparticles<<<blocks,THREADS>>> (n, h, Size, Mass, br, bg, bb, maxX, maxY, maxZ, minX, minY, minZ,
-            positions, velocity, accelration, fluidProp, color,flowcount);
-        d_count += flowcount;
-        *samplecount = d_count;
+        scatterForcesKernel << <blocks, THREADS >> > (totalBodies, d_particleIndex, accelration_sorted, accelration);
+    }
+    if (settings.updateFun) {
+        updateKernel << < blocks, THREADS >> > (dt, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.downf, settings.star, settings.heatMultiplier, settings.cold, color,settings.heateffect);
+
+    }
+    if (settings.addParticle == true) {
+        addparticles<<<blocks,THREADS>>> (settings.count, settings.h, settings.size, settings.particleMass, settings.rc, settings.gc, settings.bc, settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
+            positions, velocity, accelration, fluidProp, color,settings.flowcount);
+        d_count += settings.flowcount;
+        settings.samplecount = d_count;
 
     }
    // cudaEventRecord(start);
@@ -1333,21 +1328,9 @@ extern "C" void computephysics(int n, float dt, float h, float h2, float pollyco
         cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
 
         packToVBOKernel << <blocks, THREADS >> > (
-            n, positions,velocity,color, d_vbo);
+            settings.count, positions,velocity,color, d_vbo);
 
        
-       /* cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&ms, start, stop);
-        printf("renderer data time: %.2f ms\n", ms);*/
-        // updatearray(n,px,py,pz,size,r,g,b);
-         /*cudaEventRecord(start);
-         cudaEventRecord(stop);
-         cudaEventSynchronize(stop);
-         cudaEventElapsedTime(&ms, start, stop);
-         printf("Update array: %.2f ms\n", ms);*/
-         /*cudaEventDestroy(start);
-         cudaEventDestroy(stop);*/
     }
     
 }

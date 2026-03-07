@@ -7,6 +7,12 @@
     <Filter Include="cuda">
       <UniqueIdentifier>{8f80b438-8b1f-4414-b6d6-f1d6369b22e3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ui">
+      <UniqueIdentifier>{af2ecad6-4793-441d-9024-f3788b0c3088}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="settings">
+      <UniqueIdentifier>{7fef3366-a7fd-4365-9c6f-47be15481411}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\imgui_widgets.cpp">
@@ -34,12 +40,25 @@
       <Filter>extras</Filter>
     </ClCompile>
     <ClCompile Include="..\main.cpp" />
+    <ClCompile Include="ui.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="settings.cpp">
+      <Filter>settings</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\source\compute.h">
       <Filter>cuda</Filter>
     </ClInclude>
     <ClInclude Include="..\struct.h" />
+    <ClInclude Include="ui.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="settings.h">
+      <Filter>settings</Filter>
+    </ClInclude>
+    <ClInclude Include="main.h" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\source\compute.cu">
