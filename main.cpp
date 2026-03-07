@@ -8,7 +8,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-
+#include "fluid_sim/fluid_renderer.h"
 #include <glm/gtc/type_ptr.hpp>
 #include"fluid_sim/ui.h"
 #include <string>
@@ -31,7 +31,7 @@
 //param settings;
 //dt
 
-
+FluidRenderer fluidRenderer;
 
 const unsigned int screenWidth = 1800;
 const unsigned int screenHeight = 900;
@@ -441,7 +441,7 @@ void calcKernels() {
 void drawAll() {
 
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND); // IMPORTANT: no transparency
+    glDisable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // Ensure VBO is large enough (first frame, or after MaxFps growth).
    // If it had to grow, re-register it with CUDA.
@@ -467,19 +467,10 @@ void drawAll() {
         camera.up
     );
     glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 0.6f, 1.0f));
+    float aspect = (float)screenWidth / (float)screenHeight;
 
    
-    glUseProgram(program);
-    glUniformMatrix4fv(loc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
-    glUniformMatrix4fv(loc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
-    glUniform3fv(loc_uLightDir, 1, glm::value_ptr(lightDir));
-    glUniform3f(loc_uCameraPos, settings.wx, settings.wy, settings.wz);
-
-    glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, settings.count * 3);
-    glBindVertexArray(0);
-    glUseProgram(0);
-
+    
     // ── bounding box pass ────────────────────────────────────────────────────
     glUseProgram(bboxProgram);
     glUniformMatrix4fv(bloc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
@@ -491,6 +482,31 @@ void drawAll() {
     glDrawArrays(GL_LINES, 0, 24);
     glBindVertexArray(0);
     glUseProgram(0);
+    
+    
+      bool rendered=  fluidRenderer.render(vao, settings.count,
+            proj, viewMat,
+            settings.shaderType,
+            lightDir,
+            camera.fov, aspect);
+    
+    
+
+      if (!rendered) {
+          glUseProgram(program);
+          glUniformMatrix4fv(loc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
+          glUniformMatrix4fv(loc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
+          glUniform3fv(loc_uLightDir, 1, glm::value_ptr(lightDir));
+          glUniform3f(loc_uCameraPos, settings.wx, settings.wy, settings.wz);
+
+          glBindVertexArray(vao);
+          glDrawArrays(GL_TRIANGLES, 0, settings.count * 3);
+          glBindVertexArray(0);
+          glUseProgram(0);
+      }
+	
+  
+	
 }
 
 void updateCameraVectors(Camera& cam)
@@ -641,6 +657,7 @@ int main() {
 
     glViewport(0, 0, screenWidth, screenHeight);
 
+    fluidRenderer.init(screenWidth, screenHeight);
     // CHANGE: Setup callbacks before ImGui
     updateCameraVectors(camera);
     glfwSetCursorPosCallback(window, cursorPosCallback);
@@ -745,7 +762,7 @@ int main() {
         debugtime += effectiveDt;*/
        
         // CHANGE: OpenGL rendering instead of SFML
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(settings.bgColorR, settings.bgColorG, settings.bgColorB, 1.0f);
       
 
 
@@ -785,7 +802,7 @@ int main() {
     if (vbo) glDeleteBuffers(1, &vbo);
     if (ibo) glDeleteBuffers(1, &ibo);
     if (vao) glDeleteVertexArrays(1, &vao);
-
+    fluidRenderer.cleanup();
     glfwDestroyWindow(window);
     glfwTerminate();
 

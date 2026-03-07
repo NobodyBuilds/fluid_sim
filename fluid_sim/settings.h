@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 struct param {
 	// === FLOAT VARIABLES (4 bytes each) ===
 	// Grouped for cache locality and alignment
@@ -40,8 +40,25 @@ struct param {
 	float fpsTimer = 0.0f;
 	float accumulator = 0.0f;
 	float fps = 0.0f;
+	
+	// ── Rendering ────────────────────────────────────────────────────────────
+	float bgColorR = 0.40f, bgColorG = 0.40f, bgColorB = 0.40f;
 
-	 double fuc_ms = 0.0;
+	// Water body colours (screen-space mode)
+	float shallowColorR = 0.25f, shallowColorG = 0.75f, shallowColorB = 1.0f;
+	float deepColorR = 0.0f, deepColorG = 0.0f, deepColorB = 0.0f;
+	float absorption = 1.4f;     // Beer-Lambert coefficient
+
+	// Blur settings (screen-space mode)
+	float blurSigma = 6.0f;     // Gaussian sigma in pixels (radius fixed at 8)
+	float blurDepthFall = 2.0f;    // Bilateral depth-edge sharpness
+
+	// Sky environment for reflection (screen-space mode)
+	float skyZenithR = 0.05f, skyZenithG = 0.15f, skyZenithB = 0.45f;
+	float skyHorizonR = 0.55f, skyHorizonG = 0.75f, skyHorizonB = 0.90f;
+	float reflStrength = 0.70f;
+
+	double fuc_ms = 0.0;
 	// === INT VARIABLES (4 bytes each) ===
 	int totalBodies = 20000;
 	int maxparticles = totalBodies * 5;
@@ -56,6 +73,7 @@ struct param {
 	int substeps = 1;
 	int fpsCount = 0;
 	int pressureMode = 0;
+	int shaderType = 0;
 
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding

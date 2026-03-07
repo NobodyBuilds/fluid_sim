@@ -411,7 +411,7 @@ void ui_init()
                 "Compression resistance.\n"
                 "High = nearly incompressible but may cause instability.\n"
                 "Start ~100, increase gradually.");
-            
+
             ImGui::DragFloat("Near k'", &settings.nearpressure, 1.f, 0.f, 200000.f, "%.0f");
             ImGui::SetItemTooltip(
                 "Short-range repulsion.\n"
@@ -449,15 +449,15 @@ void ui_init()
                 "+ sign:   pressure from neighbours is added to self density.\n"
                 "The - sign method is more common and slightly faster, but the + sign method can produce more stable results at high stiffness with fewer substeps.");
 
-			ImGui::RadioButton("- sign pressure accumulation", &settings.pressureMode, 0);
-			ImGui::RadioButton("+ sign pressure accumulation", &settings.pressureMode, 1);
-            
-			ImGui::Spacing();
-			ImGui::Checkbox("pressure clamping", &settings.pressureClamp);
+            ImGui::RadioButton("- sign pressure accumulation", &settings.pressureMode, 0);
+            ImGui::RadioButton("+ sign pressure accumulation", &settings.pressureMode, 1);
+
+            ImGui::Spacing();
+            ImGui::Checkbox("pressure clamping", &settings.pressureClamp);
             ImGui::SetItemTooltip(
                 "Clamp pressure contribution from neighbours.\n"
-				"prevents any negative pressure but may cause bad behaviour "
-				);
+                "prevents any negative pressure but may cause bad behaviour "
+            );
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
@@ -616,6 +616,92 @@ void ui_init()
             ImGui::EndTabItem();
         }
 
+        if (ImGui::BeginTabItem("Render"))
+        {
+            ImGui::BeginChild("##rn", ImVec2(0, 0), false);
+
+            // ── Mode selector ─────────────────────────────────────────────────
+            Sec("Mode");
+            {
+                static const char* modeNames[] = {
+                    "0  Screen-Space Water",
+                    "1  Particles  (lit spheres)"
+                };
+                ImGui::Combo("##st", &settings.shaderType, modeNames, 2);
+                ImGui::SetItemTooltip(
+                    "0 = Screen-space fluid surface with sky reflection,\n"
+                    "    Beer-Lambert absorption, two-lobe specular.\n"
+                    "    Heat effect disabled (invisible under fluid surface).\n\n"
+                    "1 = Classic lit sphere particles.\n"
+                    "    Heat color effect available.");
+            }
+
+            // ── Water controls — shown only in mode 0 ─────────────────────────
+            if (settings.shaderType == 0)
+            {
+                // ── Water colour ──────────────────────────────────────────────
+                Sec("Water Color");
+                ImGui::ColorEdit3("Shallow##sc", &settings.shallowColorR);
+                ImGui::SetItemTooltip(
+                    "Color at thin regions and the fluid surface.\n"
+                    "Visible where particles barely overlap.");
+                ImGui::ColorEdit3("Deep##dc", &settings.deepColorR);
+                ImGui::SetItemTooltip(
+                    "Color deep inside the fluid body.\n"
+                    "Beer-Lambert absorption drives shallow→deep transition.");
+
+                Sec("Absorption");
+                ImGui::SliderFloat("Coeff##abs", &settings.absorption, 0.1f, 8.0f, "%.2f");
+                ImGui::SetItemTooltip(
+                    "Beer-Lambert absorption coefficient.\n"
+                    "0.3 = crystal-clear.   1.4 = default water.\n"
+                    "5.0 = murky / deep ocean.");
+
+                // ── Sky reflection ────────────────────────────────────────────
+                Sec("Sky Reflection");
+                ImGui::ColorEdit3("Zenith##sz", &settings.skyZenithR);
+                ImGui::SetItemTooltip(
+                    "Sky color directly overhead.\n"
+                    "Sampled when the reflected ray points upward.");
+                ImGui::ColorEdit3("Horizon##sh", &settings.skyHorizonR);
+                ImGui::SetItemTooltip(
+                    "Sky color at the horizon.\n"
+                    "Sampled when the reflected ray is nearly horizontal.");
+                ImGui::SliderFloat("Strength##rs", &settings.reflStrength, 0.0f, 1.5f, "%.2f");
+                ImGui::SetItemTooltip(
+                    "Sky reflection intensity.\n"
+                    "1.0 = physically correct.\n"
+                    "> 1.0 = exaggerated bright sky.\n"
+                    "0.0 = no sky reflection (just specular).");
+
+                // ── Surface blur ──────────────────────────────────────────────
+                Sec("Surface Blur");
+                ImGui::SliderFloat("Sigma (px)##bs", &settings.blurSigma, 1.0f, 14.0f, "%.1f");
+                ImGui::SetItemTooltip(
+                    "Gaussian sigma in pixels for bilateral blur.\n"
+                    "Higher = particles merge into a smoother surface.\n"
+                    "Lower = individual particles more distinct.\n"
+                    "2 H+V iterations (4 passes, radius 8).");
+                ImGui::SliderFloat("Edge hold##bd", &settings.blurDepthFall, 2.0f, 60.0f, "%.1f");
+                ImGui::SetItemTooltip(
+                    "Bilateral depth-edge sharpness.\n"
+                    "Low  = blurs freely across depth boundaries.\n"
+                    "High = hard surface edges, less inter-particle merging.\n"
+                    "Good range: 15–30.");
+            }
+
+            // ── Background — visible in both modes ────────────────────────────
+            Sec("Background");
+            ImGui::ColorEdit3("BG##bg", &settings.bgColorR);
+            ImGui::SetItemTooltip(
+                "Clear colour behind the simulation.\n"
+                "Dark blue-grey complements water in mode 0.");
+
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+
+
         // ══════════════════════════════════════════════════════════════════════
         //  PERF
         // ══════════════════════════════════════════════════════════════════════
@@ -735,6 +821,9 @@ void ui_init()
                 ImGui::Unindent(10);
                 };
 
+            Tip("perforamnce ",
+                "for performance increase switch to particle only rendering mode in the render tab");
+
             Tip("h",
                 "Master kernel scale.  Larger = more neighbours = "
                 "thicker fluid.  All coefficients recomputed on change.");
@@ -764,7 +853,7 @@ void ui_init()
         }
 
         ImGui::EndTabBar();
-    }
 
+    }
     ImGui::End();
 }
