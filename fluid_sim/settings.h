@@ -11,11 +11,11 @@ struct param {
 	float heatMultiplier = 15.0f;
 	float h = 3.5f;
 	float h2 = h * h;
-	float rest_density = 3.0f;
-	float pressure = 100.0f;
-	float nearpressure = 5000.0f;
+	float rest_density = 0.1884f;
+	float pressure = 3700.0f;
+	float nearpressure = 1000.0f;
 	float visc = 6.0f;
-	float downf = 150.0f;
+	float downf = 150.8f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -50.0f;
@@ -31,6 +31,7 @@ struct param {
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
 	float viscosity = 0.0f;
+	float visclap = 0.0f;
 	float wx = 0.0f;
 	float wy = 0.0f;
 	float wz = 0.0f;
@@ -40,23 +41,27 @@ struct param {
 	float fpsTimer = 0.0f;
 	float accumulator = 0.0f;
 	float fps = 0.0f;
+	float walldst = 0.90f;
+	float wallrep = 50.0f;
 	
 	// ── Rendering ────────────────────────────────────────────────────────────
-	float bgColorR = 0.40f, bgColorG = 0.40f, bgColorB = 0.40f;
+	float bgColorR = 0.11373f, bgColorG = 0.11373f, bgColorB = 0.11373f;
 
 	// Water body colours (screen-space mode)
-	float shallowColorR = 0.25f, shallowColorG = 0.75f, shallowColorB = 1.0f;
-	float deepColorR = 0.0f, deepColorG = 0.0f, deepColorB = 0.0f;
-	float absorption = 1.4f;     // Beer-Lambert coefficient
+	float shallowColorR = 0.0f, shallowColorG = 0.59216f, shallowColorB = 0.68235f;
+	float deepColorR = 0.01176f, deepColorG = 0.21569f, deepColorB = 0.25098f;
+	float absorption = 4.30f;     // Beer-Lambert coefficient
 
 	// Blur settings (screen-space mode)
-	float blurSigma = 6.0f;     // Gaussian sigma in pixels (radius fixed at 8)
+	float blurSigma = 14.0f;     // Gaussian sigma in pixels (radius fixed at 8)
 	float blurDepthFall = 2.0f;    // Bilateral depth-edge sharpness
 
 	// Sky environment for reflection (screen-space mode)
 	float skyZenithR = 0.05f, skyZenithG = 0.15f, skyZenithB = 0.45f;
-	float skyHorizonR = 0.55f, skyHorizonG = 0.75f, skyHorizonB = 0.90f;
+	float skyHorizonR = 0.0f, skyHorizonG = 0.25096f, skyHorizonB = 0.46667f;
 	float reflStrength = 0.70f;
+
+	float maxframetime = 16.67;
 
 	double fuc_ms = 0.0;
 	// === INT VARIABLES (4 bytes each) ===
@@ -70,18 +75,22 @@ struct param {
 	int bc = 255;
 	int samplecount = totalBodies;
 	int flowcount = 5;
-	int substeps = 1;
+	int substeps = 4;
 	int fpsCount = 0;
 	int pressureMode = 0;
-	int shaderType = 0;
+	int shaderType = 1;
 
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding
 	bool colisionFun = true;
-	bool updateFun = true;
+	
 	bool nopause = true;
 	bool heateffect = true;
 	bool addParticle = false;
 	bool pressureClamp = false;
+	bool boundingBox = true;
+	bool pridectedpos = false;
+	bool newkernel = false;
+	bool simulate = false;
 };
 extern param settings;

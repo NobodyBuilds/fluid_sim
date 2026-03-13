@@ -108,6 +108,7 @@ float4* fluidProp = nullptr;//density,neardensity,pressure,nearpressure
 
 uchar4* color = nullptr;//contains rgb values and iscenter for future implemetation
 
+float4* pridictedPos = nullptr; //for vorticity confinement and XSPH viscosity, not used in update kernel, only for force compuation, so we can keep it unsorted and avoid extra copy
 
 //stroage for sorting
 float4* positions_sorted = nullptr;
@@ -116,9 +117,11 @@ float4* accelration_sorted = nullptr;
 float4* fluidProp_sorted = nullptr;
 uchar4* color_sorted = nullptr;
 
+
 extern"C" void initgpu(int count) {
 
     cudaMalloc(&positions, count * sizeof(float4));
+    cudaMalloc(&pridictedPos, count * sizeof(float4));
     cudaMalloc(&velocity, count * sizeof(float4));
     cudaMalloc(&accelration, count * sizeof(float4));
     cudaMalloc(&fluidProp, count * sizeof(float4));
@@ -130,7 +133,7 @@ extern"C" void initgpu(int count) {
     cudaMalloc(&fluidProp_sorted, count * sizeof(float4));
     cudaMalloc(&color_sorted, count * sizeof(uchar4));
 
-   // cudaMalloc(&d_count, sizeof(int));
+   
    
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -145,6 +148,7 @@ extern "C" void freegpu() {
     cudaFree(accelration); cudaFree(accelration_sorted);
     cudaFree(fluidProp);   cudaFree(fluidProp_sorted);
     cudaFree(color);       cudaFree(color_sorted);
+    cudaFree(pridictedPos);
 
 };
 
@@ -584,7 +588,7 @@ __global__ void computeDensity(
     int* cellstart,
     int* cellend,
     int* particleindex,
-    float K_,float k,float pollycoef6,float spikycoef,float sdensity,float ndensity,bool clamping
+	float K_, float k, float pollycoef6, float spikycoef, float sdensity, float ndensity, bool clamping
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
@@ -606,8 +610,8 @@ __global__ void computeDensity(
     int cellsWithParticles = 0;
 
     // Debug for first particle
-   // bool debug = (i == 0);
-   bool debug = 0;
+    bool Debug = (i == 0||i == 5||i == 10||i == 50||i == 100||i == 500||i == 1000);
+ /*  bool debug = 0;*/
 
    float m_i = p.w;
   
@@ -658,8 +662,11 @@ __global__ void computeDensity(
                         float invR = rsqrtf(r2+ 1e-12f);
                         float r = r2 * invR;
                         float v = h2 - r2;
-                        float vcube = v * v * v;
-                        float d = pollycoef6 * vcube;//precomputed pollycoef6
+                        
+                       float vcube = v * v * v;
+                        
+                            float d = pollycoef6 * vcube;//precomputed pollycoef6
+                        
                         float m_j = pj.w;//mass
                         rho += m_j * d;
                         float x = h - r;
@@ -706,13 +713,13 @@ __global__ void computeDensity(
         printf("===================\n");
     }*/
 
-    if (debug) {
-        printf(" density Total: checked %d cells, %d had particles, found %d neighbors\n",
-           cellsChecked, cellsWithParticles, neighborCount);
-       // printf("h: %2f , restdensity: %6f, k: %2f\n", h, rest_density, K_);
-       // printf("final density after density function: %.6f\n", rho);
-       // printf("=== END DENSITY ===\n\n");
-    }
+    //if (Debug) {
+    //   // printf(" density Total: checked %d cells, %d had particles, found %d neighbors\n",
+    //     //  cellsChecked, cellsWithParticles, neighborCount);
+    //   // printf("h: %2f , restdensity: %6f, k: %2f\n", h, rest_density, K_);
+    //    printf("final density after density function: %.6f\n", rho);
+    //   // printf("=== END DENSITY ===\n\n");
+    //}
 }
 
 __global__ void computePressure(
@@ -730,7 +737,7 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,int pressuremode
+    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,int maxz,int pressuremode,float rep,float dst
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -741,22 +748,32 @@ __global__ void computePressure(
     float yi = p.y;
     float zi = p.z;
 
+    float3 force = { 0.0f, 0.0f, 0.0f };
+    float wallForce = rep; // tune this
+    float wallDst = dst * h;
+    if (xi - minX < wallDst) force.x += wallForce * (1.0f - (xi - minX) / wallDst);
+    if (maxX - xi < wallDst) force.x -= wallForce * (1.0f - (maxX - xi) / wallDst);
+    if (yi - minY < wallDst) force.y += wallForce * (1.0f - (yi - minY) / wallDst);
+    if (maxY - yi < wallDst) force.y -= wallForce * (1.0f - (maxY - yi) / wallDst);
+    if (zi - minZ < wallDst) force.z += wallForce * (1.0f - (zi - minZ) / wallDst);
+    if (maxz - zi < wallDst) force.z -= wallForce * (1.0f - (maxz - zi) / wallDst);
+
     //boundary clumping fix 
-	float sidex = (xi <= minX + 0.01f) ? h * 0.2f : 0.0f;
-	float sidey = (yi <= minY + 0.01f) ? h * 0.2f : 0.0f;
-	float nsidex = (xi >= maxX - 0.01f) ? h * 0.2f : 0.0f;
-	float nsidey = (yi >= maxY - 0.01f) ? h * 0.2f : 0.0f;
+    float sidex = (xi <= minX + 0.01f) ? h * 0.2f : 0.0f;
+    float sidey = (yi <= minY + 0.01f) ? h * 0.2f : 0.0f;
+    float nsidex = (xi >= maxX - 0.01f) ? h * 0.2f : 0.0f;
+    float nsidey = (yi >= maxY - 0.01f) ? h * 0.2f : 0.0f;
     float floorBias = (zi <= minZ + 0.01f) ? h * 0.2f : 0.0f;
-	xi += sidex;
+    xi += sidex;
     yi += sidey;
     zi += floorBias;
-	xi -= nsidex;
-	yi -= nsidey;
+    xi -= nsidex;
+    yi -= nsidey;
 
     float4 fluid = __ldg(&fluidProp[i]);
     float p_i = fluid.z;
     float pn_i= fluid.w;
-    float3 force = { 0.0f, 0.0f, 0.0f };
+   
     float3 visc = { 0.0f, 0.0f, 0.0f };
     float3 deltaV = { 0.0f,0.0f,0.0f };
     float4 v = __ldg(&vel[i]);
@@ -831,6 +848,7 @@ __global__ void computePressure(
                         float nrho_j = fluidj.y;
                         float x = h - r;
                         float gradW = spikyGradv *x*x;//precomputed -gradw
+                       
                         
                       
                         float pressureterm = pressuretermRho_i + p_j / (rho_j * rho_j);
@@ -1281,43 +1299,67 @@ extern "C" void registerBodies() {
                                                  positions,velocity,accelration,fluidProp,color);  
 }
 
+__global__ void pridictedPositions(const int n, const float4* __restrict__ pos,const float4* __restrict__ vel,float4* ppos,const float dt){
+
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+	float4 p = __ldg(&pos[i]);
+	float4 v = __ldg(&vel[i]);
+    
+	ppos[i].x = p.x + v.x * dt; 
+	ppos[i].y = p.y + v.y * dt;
+	ppos[i].z = p.z + v.z * dt;
+	ppos[i].w = p.w;//mass
+
+}
+
 extern "C" void computephysics(float dt) {
     int blocks = (settings.count + THREADS - 1) / THREADS;
     int totalBodies = settings.count;
     cudaError_t err;
     float d_cellsize = settings.h * 1.0f;//tweaak it gng
-     cudaEvent_t start, stop;
     
-    if (settings.addParticle == true) {
-        d_count = settings.count;
-
-       // printf("gpu count: %d\n", d_count);
-    }
-    float ms = 0;
-    //sph//////////////
-    //builg gird
-   // printf("count %d\n", n);
+    float subdt = settings.fixedDt / settings.substeps;
+	float deltaTime = dt / settings.substeps;
+   
     cudaGraphicsUnmapResources(1, &g_vboResource, 0);
-    if (settings.colisionFun) {
-        buildDynamicGrid(settings.count, d_cellsize, positions);
+   
+    if (settings.nopause) {
+        for (int i = 0; i < settings.substeps; i++) {
+
+            if (settings.colisionFun) {
+
+                if (settings.pridectedpos) {
+                    pridictedPositions << <blocks, THREADS >> > (totalBodies, positions, velocity, pridictedPos, subdt);
+                    buildDynamicGrid(settings.count, d_cellsize, pridictedPos);
+                }
+                else {
+                    buildDynamicGrid(settings.count, d_cellsize, positions);
+                }
 
 
-        computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, fluidProp_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity,settings.pressureClamp);
 
-        computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.pressure, settings.rest_density, positions_sorted, accelration_sorted, velocity_sorted, fluidProp_sorted, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY,settings.pressureMode);
+                computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, fluidProp_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.pressureClamp);
 
-        scatterForcesKernel << <blocks, THREADS >> > (totalBodies, d_particleIndex, accelration_sorted, accelration);
-    }
-    if (settings.updateFun) {
-        updateKernel << < blocks, THREADS >> > (dt, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.downf, settings.star, settings.heatMultiplier, settings.cold, color,settings.heateffect);
+                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.pressure, settings.rest_density, positions_sorted, accelration_sorted, velocity_sorted, fluidProp_sorted, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.pressureMode,settings.wallrep,settings.walldst);
 
-    }
-    if (settings.addParticle == true) {
-        addparticles<<<blocks,THREADS>>> (settings.count, settings.h, settings.size, settings.particleMass, settings.rc, settings.gc, settings.bc, settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
-            positions, velocity, accelration, fluidProp, color,settings.flowcount);
-        d_count += settings.flowcount;
-        settings.samplecount = d_count;
+                scatterForcesKernel << <blocks, THREADS >> > (totalBodies, d_particleIndex, accelration_sorted, accelration);
+            }
 
+            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.downf, settings.star, settings.heatMultiplier, settings.cold, color, settings.heateffect);
+
+
+        }
+
+
+        if (settings.addParticle == true) {
+            addparticles << <blocks, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass, settings.rc, settings.gc, settings.bc, settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
+                positions, velocity, accelration, fluidProp, color, settings.flowcount);
+            d_count += settings.flowcount;
+            settings.samplecount = d_count;
+
+        }
     }
    // cudaEventRecord(start);
     if (g_vboResource) {

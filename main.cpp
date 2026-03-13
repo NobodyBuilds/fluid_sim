@@ -373,11 +373,11 @@ void restartSimulation() {
     }
 
 void updatePhysics(float dt) {
-    if (settings.fuc_ms > 16.67f|| settings.avgFps<60 )settings.addParticle = false;
-    float subDt = dt / (float)settings.substeps;
-    for (int step = 0; step < settings.substeps; step++) {
-        computephysics(subDt);
-    }
+    if (settings.fuc_ms > settings.maxframetime )settings.addParticle = false;
+    
+   
+        computephysics(dt);
+    
     if (settings.addParticle == true) {
         settings.totalBodies = settings.samplecount;
         settings.count = settings.samplecount;
@@ -424,17 +424,26 @@ void initBoundingBox() {
 void calcKernels() {
     float h2 = settings.h * settings.h;
     float h3 = settings.h * settings.h * settings.h;
-   // float h4 = h2 * h2;
+    float h4 = h2 * h2;
+	float h5 = h2 * h3;
     float h6 = h3 * h3;
     float h9 = h3 * h3 * h3;
 
     
+   
+   
+        
+    //   settings.rest_density = 0.1036f * powf(3.5f / settings.h, 3.0f);
+
+
+
     settings.pollycoef6 = 315.0f / (64.0f * settings.pi * h9);
-    settings.Sdensity = settings.pollycoef6 * h6;//self density at r=0
-    settings.spikycoef = 15.0f / (settings.pi * h6);
-    settings.ndensity = settings.spikycoef * h3;//near self density at r=0
-    settings.spikygradv = -45 / (settings.pi * h6);
-    settings.viscosity = 45 / (settings.pi * h6);
+   settings.Sdensity = settings.pollycoef6 * h6;//self density at r=0
+   settings.spikycoef = 15.0f / (settings.pi * h6);
+   settings.ndensity = settings.spikycoef * h3;//near self density at r=0
+   settings.spikygradv = -45 / (settings.pi * h6);
+   settings.viscosity = 45 / (settings.pi * h6);
+    
 }
 
 
@@ -470,18 +479,19 @@ void drawAll() {
     float aspect = (float)screenWidth / (float)screenHeight;
 
    
-    
-    // ── bounding box pass ────────────────────────────────────────────────────
-    glUseProgram(bboxProgram);
-    glUniformMatrix4fv(bloc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
-    glUniformMatrix4fv(bloc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
-    glUniform3f(bloc_uColor, 1.0f, 1.0f, 1.0f);
+    if (settings.boundingBox) {
+        // ── bounding box pass ────────────────────────────────────────────────────
+        glUseProgram(bboxProgram);
+        glUniformMatrix4fv(bloc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
+        glUniformMatrix4fv(bloc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
+        glUniform3f(bloc_uColor, 1.0f, 1.0f, 1.0f);
 
-    glBindVertexArray(bboxVAO);
-    glLineWidth(1.0f);
-    glDrawArrays(GL_LINES, 0, 24);
-    glBindVertexArray(0);
-    glUseProgram(0);
+        glBindVertexArray(bboxVAO);
+        glLineWidth(1.0f);
+        glDrawArrays(GL_LINES, 0, 24);
+        glBindVertexArray(0);
+        glUseProgram(0);
+    }
     
     
       bool rendered=  fluidRenderer.render(vao, settings.count,
@@ -739,20 +749,27 @@ int main() {
         settings.wz = camera.position.z;
         
         
-        float effectiveDt = settings.fixedDt * settings.simspeed;
 
-        while (settings.accumulator >= settings.fixedDt) {
-
-
-            if (settings.nopause == true) {
-                updatePhysics(effectiveDt);
-            }
-
-
-
-            settings.accumulator -= settings.fixedDt;
+        if (settings.simulate) {
+           
+                updatePhysics(settings.fixedDt);
+            settings.accumulator = 0.0f;
         }
-        
+        else {
+
+            float effectiveDt = settings.fixedDt * settings.simspeed;
+            while (settings.accumulator >= settings.fixedDt) {
+
+
+                if (settings.nopause == true) {
+                    updatePhysics(effectiveDt);
+                }
+
+
+
+                settings.accumulator -= settings.fixedDt;
+            }
+        }
 
        
         /*if (debugtime > 0.50f) {

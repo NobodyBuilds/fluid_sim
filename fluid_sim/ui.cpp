@@ -347,17 +347,23 @@ void ui_init()
                 "Target equilibrium density.\n"
                 "Higher = particles draw together.\nLower = fluid expands.");
 
+			ImGui::DragFloat("wall force", &settings.wallrep, 0.1f, 0.f, 10000.f, "%1.0f");
+			ImGui::DragFloat("wall dst", &settings.walldst, 0.01f, 0.f, 10.f, "%.1f");
+			
+
             Sec("Toggles");
 
             ImGui::Checkbox("SPH##q", &settings.colisionFun);
             ImGui::SetItemTooltip("Enable density + pressure force kernels.");
             ImGui::SameLine(120);
-            ImGui::Checkbox("Integrate##q", &settings.updateFun);
-            ImGui::SetItemTooltip("Enable velocity / position update step.");
-            ImGui::SameLine();
+           
+          
             ImGui::Checkbox("Heat##q", &settings.heateffect);
             ImGui::SetItemTooltip("Enable kinetic heat colour shift.");
 
+            ImGui::Spacing();
+            ImGui::Checkbox("simulate long run", &settings.simulate);
+			ImGui::SetItemTooltip("renders each fram without skipping any ,help in recording and high count simulation");
             ImGui::Spacing();
             if (DangerButton("Restart"))
                 restartSimulation();
@@ -376,7 +382,7 @@ void ui_init()
 
             Sec("Kernel");
 
-            if (ImGui::SliderFloat("h##fl", &settings.h, 0.1f, 20.0f, "%.2f"))
+            if (ImGui::SliderFloat("h##fl", &settings.h, 0.1f, 20.0f, "%.01f"))
                 calcKernels();
             ImGui::SetItemTooltip(
                 "Interaction radius.\n"
@@ -399,7 +405,7 @@ void ui_init()
 
             Sec("Density");
 
-            ImGui::DragFloat("Rest rho", &settings.rest_density, 0.5f, 0.f, 10000.f, "%.2f");
+            ImGui::DragFloat("Rest rho", &settings.rest_density, 0.01f, 0.f, 10000.f, "%.01f");
             ImGui::SetItemTooltip(
                 "Target density at equilibrium.\n"
                 "Raise to attract particles.  Lower to spread them.");
@@ -434,12 +440,14 @@ void ui_init()
             ImGui::SetItemTooltip(
                 "Wall bounce coefficient.\n"
                 "0.0 = fully inelastic.   1.0 = perfectly elastic.");
+			ImGui::DragFloat("wall force", &settings.wallrep, 0.1f, 0.f, 10000.f, "%1.0f");
+			ImGui::DragFloat("wall dst", &settings.walldst, 0.01f, 0.f, 10.f, "%.1f");
 
             Sec("Pipeline");
 
             ImGui::Checkbox("SPH forces", &settings.colisionFun);
             ImGui::SameLine(150);
-            ImGui::Checkbox("Integration", &settings.updateFun);
+           
 
             Sec("additonal settings");
             ImGui::Text("Pressure accumulation mode:");
@@ -530,6 +538,8 @@ void ui_init()
 
             ImGui::Checkbox("Enable##em", &settings.addParticle);
             ImGui::SetItemTooltip("Inject new particles each frame.");
+            ImGui::InputFloat("max frametime", &settings.maxframetime);
+            ImGui::SetItemTooltip("max particle at given frame time");
             if (settings.addParticle)
             {
                 ImGui::InputInt("Flow", &settings.flowcount);
@@ -586,6 +596,8 @@ void ui_init()
                 ImGui::EndTable();
             }
             if (bchg) initBoundingBox();
+
+            ImGui::Checkbox("bounding box render", &settings.boundingBox);
 
             float bx = settings.maxX - settings.minX;
             float by = settings.maxY - settings.minY;
