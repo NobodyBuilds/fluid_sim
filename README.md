@@ -11,6 +11,8 @@ so expect errors or bugs and feel free to give feedback
 -----------------------
 <img width="1220" height="486" alt="Screenshot 2026-03-07 214619" src="https://github.com/user-attachments/assets/058f5045-2d8f-4ac1-bab9-b4a54e308f3c" />
 <img width="801" height="282" alt="Screenshot 2026-03-07 214649" src="https://github.com/user-attachments/assets/9d0e331d-0f11-454a-9ebc-9e39f5118f34" />
+<img width="1238" height="855" alt="Screenshot 2026-03-13 101256" src="https://github.com/user-attachments/assets/6045839e-2ab7-4c0f-87f0-623bd54c37d9" />
+<img width="1178" height="725" alt="Screenshot 2026-03-13 101357" src="https://github.com/user-attachments/assets/119d2576-3a37-4238-b4f7-9d30647ed4da" />
 
 -----------------------
 --
