@@ -750,7 +750,7 @@ int main() {
         
         
 
-        if (settings.simulate) {
+        if (settings.recordSim) {
            
                 updatePhysics(settings.fixedDt);
             settings.accumulator = 0.0f;

@@ -362,7 +362,7 @@ void ui_init()
             ImGui::SetItemTooltip("Enable kinetic heat colour shift.");
 
             ImGui::Spacing();
-            ImGui::Checkbox("simulate long run", &settings.simulate);
+            ImGui::Checkbox("simulate long run", &settings.recordSim);
 			ImGui::SetItemTooltip("renders each fram without skipping any ,help in recording and high count simulation");
             ImGui::Spacing();
             if (DangerButton("Restart"))

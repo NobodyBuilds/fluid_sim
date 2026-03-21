@@ -24,6 +24,7 @@
 #define THREADS 256
 #define MAX_PARTICLES_PER_CELL 256
 //param settings;
+__constant__ param s;
 
 static void* d_sortTempStorage = nullptr;
 static size_t sortTempBytes = 0;
@@ -92,6 +93,11 @@ __host__ __device__ inline float3 normalize(float3 v) {
 __device__ __forceinline__ float lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
+
+void syncSettings() {
+	cudaMemcpyToSymbol(&s, &settings, sizeof(param));
+}
+
 // arrays to store particle data
 
 //float4 for better cache
@@ -115,7 +121,6 @@ float4* positions_sorted = nullptr;
 float4* velocity_sorted = nullptr;
 float4* accelration_sorted = nullptr;
 float4* fluidProp_sorted = nullptr;
-uchar4* color_sorted = nullptr;
 
 
 extern"C" void initgpu(int count) {
@@ -131,7 +136,7 @@ extern"C" void initgpu(int count) {
     cudaMalloc(&velocity_sorted, count * sizeof(float4));
     cudaMalloc(&accelration_sorted, count * sizeof(float4));
     cudaMalloc(&fluidProp_sorted, count * sizeof(float4));
-    cudaMalloc(&color_sorted, count * sizeof(uchar4));
+  
 
    
    
@@ -147,7 +152,7 @@ extern "C" void freegpu() {
     cudaFree(velocity);    cudaFree(velocity_sorted);
     cudaFree(accelration); cudaFree(accelration_sorted);
     cudaFree(fluidProp);   cudaFree(fluidProp_sorted);
-    cudaFree(color);       cudaFree(color_sorted);
+    cudaFree(color);      
     cudaFree(pridictedPos);
 
 };
@@ -390,12 +395,12 @@ __global__ void reorderParticlesKernel(
     const float4* __restrict__ velIn,
     const float4* __restrict__ aclIn,
     const float4* __restrict__ fluidIn,
-    const uchar4* __restrict__ colorIn,
+ 
     float4* posOut,
     float4* velOut,
     float4* aclOut,
-    float4* fluidOut,
-    uchar4* colorOut)
+    float4* fluidOut
+   )
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
@@ -406,7 +411,7 @@ __global__ void reorderParticlesKernel(
     velOut[i] = velIn[src];
     aclOut[i] = aclIn[src];
     fluidOut[i] = fluidIn[src];
-    colorOut[i] = colorIn[src];
+  
 }
 
 __global__ void clearActiveCellsKernel(
@@ -426,30 +431,6 @@ __global__ void clearActiveCellsKernel(
 }
 
 
-__global__ void copysortedarray(int n,
-    float4* posIn,
-    float4* velIn,
-    float4* aclIn,
-    float4* fluidIn,
-    uchar4* colorIn,
-    const float4* __restrict__ posOut,
-    const float4* __restrict__ velOut,
-    const float4* __restrict__ aclOut,
-    const float4* __restrict__ fluidOut,
-    const uchar4* __restrict__ colorOut) {
-
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    posIn[i] = posOut[i];
-	velIn[i] = velOut[i];
-	aclIn[i] = aclOut[i];
-	fluidIn[i] = fluidOut[i];
-	colorIn[i] = colorOut[i];
-
-
-}
-
-
 void buildDynamicGrid(
     int numParticles,
     float cellSize,
@@ -462,13 +443,7 @@ void buildDynamicGrid(
         return;
     }
 
-    /*printf("\n=== BUILDING DYNAMIC GRID ===\n");
-    printf("Particles: %d, CellSize: %.3f\n", numParticles, cellSize);*/
-
-    // Clear hash table
-  
- //   cudaMemset(d_hashTable, 0, HASH_TABLE_SIZE * sizeof(HashCell));
-
+    
     static bool firstFrame = true;
     if (firstFrame) {
         cudaMemset(d_cellStart, -1, HASH_TABLE_SIZE * sizeof(int));
@@ -480,22 +455,10 @@ void buildDynamicGrid(
         clearActiveCellsKernel << <blocks, THREADS >> > (
             numParticles, d_particleHash, d_cellStart, d_cellEnd);
     }
-   /* cudaMemset(d_cellStart, -1, HASH_TABLE_SIZE * sizeof(int));
-       cudaMemset(d_cellEnd, -1, HASH_TABLE_SIZE * sizeof(int));*/
-    // Build hash table directly
-    /*printf("Launching kernel: %d blocks, %d threads/block\n", blocks, THREADS);*/
-
-    /*buildHashTableKernel << <blocks, THREADS >> > (
-        numParticles, cellSize,
-        d_px, d_py, d_pz,
-        d_hashTable, HASH_TABLE_SIZE
-        );*/
+  
     computeHashKernel << < blocks, THREADS >> > (numParticles,cellSize,pos,d_particleHash,d_particleIndex,HASH_TABLE_SIZE);
     
-   /* cudaError_t err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        printf("ERROR: Grid build failed: %s\n", cudaGetErrorString(err));
-    }*/
+  
     //sorting
   
     cub::DeviceRadixSort::SortPairs(
@@ -511,41 +474,18 @@ void buildDynamicGrid(
         return;
     }
 
-   /* err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        printf("ERROR: Grid sort failed: %s\n", cudaGetErrorString(err));
-    }*/
+  
 
     findCellBoundariesKernel << <blocks, THREADS >> > (numParticles, d_particleHash, d_cellStart, d_cellEnd);
 
     reorderParticlesKernel << <blocks, THREADS >> > (
         numParticles,
         d_particleIndex,        // tells us: sorted slot i came from original slot src
-        positions, velocity, accelration, fluidProp, color,      // source
+        positions, velocity, accelration, fluidProp,       // source
         positions_sorted, velocity_sorted, accelration_sorted,
-        fluidProp_sorted, color_sorted);
+        fluidProp_sorted);
 
     
-        /*copysortedarray << <blocks, THREADS >> > (numParticles, positions, velocity, accelration, fluidProp, color,
-            positions_sorted, velocity_sorted, accelration_sorted,
-            fluidProp_sorted, color_sorted);*/
-    
-   /* cudaMemcpy(positions, positions_sorted, numParticles * sizeof(float4), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(velocity, velocity_sorted, numParticles * sizeof(float4), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(accelration, accelration_sorted, numParticles * sizeof(float4), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(fluidProp, fluidProp_sorted, numParticles * sizeof(float4), cudaMemcpyDeviceToDevice);
-    cudaMemcpy(color, color_sorted, numParticles * sizeof(uchar4), cudaMemcpyDeviceToDevice);
-	*/
-
-    /*std::swap(positions, positions_sorted);
-    std::swap(velocity, velocity_sorted);
-    std::swap(accelration, accelration_sorted);
-    std::swap(fluidProp, fluidProp_sorted);
-    std::swap(color, color_sorted);*/
-    /* err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        printf("ERROR: Grid bound failed: %s\n", cudaGetErrorString(err));
-    }*/
 
 }
 
@@ -619,12 +559,7 @@ __global__ void computeDensity(
    float rho = m_i * sdensity;
    float mindensity = rho * 0.5f;
 
-    //if (debug) {
-    //    printf("\n=== DENSITY: Particle %d ===\n", i);
-    //    printf("Position: (%.3f, %.3f, %.3f)\n", xi, yi, zi);
-    //    printf("Cell: (%d, %d, %d)\n", cx, cy, cz);
-    //    printf("Search radius h: %.3f\n", h);
-    //}
+   
 
     // Search 27 neighboring cells
     for (int dz = -1; dz <= 1; dz++) {
@@ -674,17 +609,6 @@ __global__ void computeDensity(
                         rhon += m_j * nd;
                         neighborCount++;
 
-                        /* if (debug && neighborCount <= 5) {
-                             printf("    Neighbor %d: dist=%.3f (within h=%.3f)\n", j, r, h);
-                         }
-                         if (debug) {
-                             printf("Cell size: %.3f, Search radius h: %.3f\n", cellSize, h);
-                             printf("Max possible neighbor distance in 27 cells: %.3f\n",
-                                 cellSize * sqrtf(3.0f) * 1.5f);
-                             printf("Ratio (should be > 1.0): %.3f\n",
-                                 (cellSize * sqrtf(3.0f) * 1.5f) / h);
-                         }
-                     }*/
                     }
                 }
             }
@@ -700,26 +624,7 @@ __global__ void computeDensity(
      n_p = rhon * K_;//y= near density
    
     fluidProp[i] = make_float4(fmaxf(rho, mindensity), fmaxf(rhon, mindensity* 0.1f),pp, n_p);
-    /*if (i == 0) {
-        float W_zero = densitykernel(0.0f, h);
-        printf("\n=== DENSITY DEBUG ===\n");
-        printf("h = %.6f\n", h);
-        printf("mass = %.6f\n", mass[0]);
-        printf("W(0,h) = %.6f\n", W_zero);
-        printf("Self contribution = mass * W(0,h) = %.6f\n", mass[0] * W_zero);
-        printf("Neighbors found: %d\n", neighborCount);
-        printf("Final density: %.6f\n", density[0]);
-        printf("rest_density expected: %.6f\n", rest_density);
-        printf("===================\n");
-    }*/
-
-    //if (Debug) {
-    //   // printf(" density Total: checked %d cells, %d had particles, found %d neighbors\n",
-    //     //  cellsChecked, cellsWithParticles, neighborCount);
-    //   // printf("h: %2f , restdensity: %6f, k: %2f\n", h, rest_density, K_);
-    //    printf("final density after density function: %.6f\n", rho);
-    //   // printf("=== END DENSITY ===\n\n");
-    //}
+    
 }
 
 __global__ void computePressure(
@@ -758,17 +663,7 @@ __global__ void computePressure(
     if (zi - minZ < wallDst) force.z += wallForce * (1.0f - (zi - minZ) / wallDst);
     if (maxz - zi < wallDst) force.z -= wallForce * (1.0f - (maxz - zi) / wallDst);
 
-    //boundary clumping fix 
-    float sidex = (xi <= minX + 0.01f) ? h * 0.2f : 0.0f;
-    float sidey = (yi <= minY + 0.01f) ? h * 0.2f : 0.0f;
-    float nsidex = (xi >= maxX - 0.01f) ? h * 0.2f : 0.0f;
-    float nsidey = (yi >= maxY - 0.01f) ? h * 0.2f : 0.0f;
-    float floorBias = (zi <= minZ + 0.01f) ? h * 0.2f : 0.0f;
-    xi += sidex;
-    yi += sidey;
-    zi += floorBias;
-    xi -= nsidex;
-    yi -= nsidey;
+   
 
     float4 fluid = __ldg(&fluidProp[i]);
     float p_i = fluid.z;
@@ -794,11 +689,7 @@ __global__ void computePressure(
                         float pressuretermRho_i = p_i / (rho_i * rho_i);
                         float NpressuretermRho_i = pn_i / (nrho_i * nrho_i);
 
-    /* if (debug) {
-         printf("\n=== PRESSURE: Particle %d ===\n", i);
-         printf("Position: (%.3f, %.3f, %.3f)\n", xi, yi, zi);
-         printf("Density: %.6f, Pressure: %.6f\n", rho_i, p_i);
-     }*/
+   
 
      
     for (int dz = -1; dz <= 1; dz++) {
@@ -854,33 +745,7 @@ __global__ void computePressure(
                         float pressureterm = pressuretermRho_i + p_j / (rho_j * rho_j);
                         float npressureterm =NpressuretermRho_i + np_j / (nrho_j * nrho_j);
                        // float pressureterm = (p_i + p_j)/2;
-                       
-
-                        // pressure accumulation difference with pos and neg signs
-                        // setting where they act kinda like water
-                        // 
-                        // 
-                        // 
-                        // -sign settings
-                        //r-d=0.1
-                        //k=1000
-                        //nk=2000
-                        //mass=1
-                        // as h increases particle act like thick fluid
-                        //as rest density is increase fluid becomes thick and attracts
-                        //high k result is thick fluid
-                        //motion is smooth and very thick like honey
-
-
-                        //no - sign settings 
-                        // only - for near pressure, postive attracts
-                        //r-d=1
-                        //k=100
-                        //nk=2000
-                        //mass=10
-                        //as h increaases particle becomes jittery they repel 
-                        //as rest density is incrreases particle distance themselves from others repulsion dominates
-                        //high k is very jittery ,even explodes,low k is kinda okkay but jitter at surface
+                     
                         float m_j = pj.w;//particle mass stored in pos.w
                         if (pressuremode == 0) {
                             force += -m_j * pressureterm * gradW * dir;
@@ -900,15 +765,7 @@ __global__ void computePressure(
                             * vij
                             / rho_j
                             * lapW;
-                        //combined pressure and xsph
-                        /*float v = h2 - r * r;
-                        float W = pollycoef6 * v*v*v;
-                        float factor = (mass[j] / density[j]) * W;
-
-                        deltaV.x += factor * (vx[j] - vx[i]);
-                        deltaV.y += factor * (vy[j] - vy[i]);
-                        deltaV.z += factor * (vz[j] - vz[i]);*/
-
+                        
 
 
                     }
@@ -919,9 +776,7 @@ __global__ void computePressure(
     if (debug) {
         printf("pressure Total: checked %d cells, %d had particles, found %d neighbors\n",
             cellsChecked, cellsWithParticles, neighborCount);
-      //  printf(" pressure forces-\n x: %6f \n y: %6f \n z: %6f \n viscosity \n x: %6f \n y: %6f \n z %6f\n", force.x, force.y, force.z, visc.x, visc.y, visc.z);
-        //printf("epsilon: %3f\n", epsilon);
-      //  printf("xsph values in deltaV \n x: %5f \n y: %5f \n y: %5f \n", deltaV.x,deltaV.y,deltaV.z);
+      
     }
     //apply pressure
     float4 accl;
@@ -931,10 +786,7 @@ __global__ void computePressure(
     accl.z = (force.z + visc.z );
     accl.w = 0.0f;
     acl[i]+= accl;
-    //apply xsph
-   /* vx[i] += epsilon * deltaV.x;
-    vy[i] += epsilon * deltaV.y;
-    vz[i] += epsilon * deltaV.z;*/
+  
    
 }
 

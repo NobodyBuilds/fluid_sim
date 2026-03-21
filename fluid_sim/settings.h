@@ -91,6 +91,6 @@ struct param {
 	bool boundingBox = true;
 	bool pridectedpos = false;
 	bool newkernel = false;
-	bool simulate = false;
+	bool recordSim = false;
 };
 extern param settings;
