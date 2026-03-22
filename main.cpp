@@ -700,7 +700,7 @@ int main() {
     initBoundingBox();
     initgpu(settings.maxparticles);
     initDynamicGrid(settings.maxparticles);
-
+    
     ensureVBOCapacity((size_t)500000*3);
     registerGLBuffer(vbo);
 
@@ -731,7 +731,9 @@ int main() {
         glfwPollEvents();
 
         ui_init();
-       
+        if (settings.count >= (settings.maxparticles)*0.98f) {
+            settings.addParticle = false;
+	   }
 
         // Timing
         double now = glfwGetTime();

@@ -70,9 +70,7 @@ struct param {
 	int count = totalBodies;
 	int A = 0;
 	int star = 0;
-	int rc = 25;
-	int gc = 50;
-	int bc = 255;
+	
 	int samplecount = totalBodies;
 	int flowcount = 5;
 	int substeps = 4;

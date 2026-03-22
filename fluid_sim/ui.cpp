@@ -301,7 +301,7 @@ static void DrawQuickContent()
     ImGui::DragFloat("Rest rho##q", &settings.rest_density, 0.5f, 0.0f, 10000.f, "%.1f"); SYNC;
     ImGui::SetItemTooltip("Target equilibrium density.  Higher = particles draw together.");
 
-    ImGui::DragFloat("Stiffness k##q", &settings.pressure, 1.0f, 0.0f, 200000.f, "%.0f"); SYNC;
+    ImGui::DragFloat("Stiffness k##q", &settings.pressure, 10.0f, 0.0f, 200000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Compression resistance.  Start low, increase gradually.");
 
     ImGui::DragFloat("Near k'##q", &settings.nearpressure, 1.0f, 0.0f, 200000.f, "%.0f"); SYNC;
@@ -398,6 +398,7 @@ static void DrawParticlesContent()
     ImGui::InputInt("Buffer##pt", &settings.maxparticles);
     if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
     ImGui::SetItemTooltip("GPU allocation size in particles.  Must be >= Count.  Increase before using the emitter.");
+   
 
     FillBar(5.f);
 
@@ -411,15 +412,7 @@ static void DrawParticlesContent()
     ImGui::SetItemTooltip("Particle mass.  Affects pressure and density contributions.");
 
     // ── Spawn tint ────────────────────────────────────────────────────────────
-    Sec("Spawn Tint");
-    ImGui::SliderInt("R##pt", &settings.rc, 0, 255); SYNC;
-    ImGui::SliderInt("G##pt", &settings.gc, 0, 255); SYNC;
-    ImGui::SliderInt("B##pt", &settings.bc, 0, 255); SYNC;
-    ImGui::ColorButton("##ptcol",
-        ImVec4(settings.rc / 255.f, settings.gc / 255.f, settings.bc / 255.f, 1.f),
-        ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoBorder,
-        ImVec2(ImGui::GetContentRegionAvail().x, 14));
-    ImGui::SetItemTooltip("Current spawn tint preview.");
+    
 
     // ── Heat colour ───────────────────────────────────────────────────────────
     Sec("Heat Colour");
@@ -446,10 +439,7 @@ static void DrawParticlesContent()
         ImGui::TextDisabled("emitted  %d", settings.samplecount);
     }
 
-    ImGui::Spacing();
-    if (DangerButton("Restart"))
-        restartSimulation();
-    ImGui::SetItemTooltip("Wipe all particles and respawn.");
+    
 }
 
 // ─── WORLD ───────────────────────────────────────────────────────────────────
@@ -855,9 +845,5 @@ void ui_init()
 
     ImGui::End();  // ##panel
 
-    // ── Batch sync — one call per frame, not per widget ───────────────────────
-    if (syncsettings) {
-        syncSettings();
-        syncsettings = false;
-    }
+  
 }
