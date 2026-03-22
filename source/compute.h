@@ -14,7 +14,7 @@ extern "C" {
 	void computephysics(float dt);
 	void registerGLBuffer(unsigned int vboId);
 	void unregisterGLBuffer();
-
+	void syncSettings();
 #ifdef __cplusplus
 }
 #endif

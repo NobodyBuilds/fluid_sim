@@ -94,7 +94,7 @@ __device__ __forceinline__ float lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
 
-void syncSettings() {
+extern "C" void syncSettings() {
 	cudaMemcpyToSymbol(&s, &settings, sizeof(param));
 }
 
