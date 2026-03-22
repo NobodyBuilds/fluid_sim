@@ -1,4 +1,3 @@
-<img width="1396" height="694" alt="Screenshot 2026-03-22 151122" src="https://github.com/user-attachments/assets/72d800c8-ae7a-461f-9f6b-b15ee3f46a27" /># 🌊 SPH Fluid Simulation
 
 A **real time Smoothed Particle Hydrodynamics (SPH) fluid ** simulation built for realistic fluid behavior using **GPU acceleration (CUDA)** and spatial hashing for fast neighbor searches.
 
