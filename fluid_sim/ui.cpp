@@ -363,20 +363,7 @@ static void DrawFluidContent()
     ImGui::DragFloat("Near k'##fl", &settings.nearpressure, 1.f, 0.f, 200000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Typically 10-50x k.");
 
-    ImGui::Spacing();
-    ImGui::Text("Pressure accumulation:");
-    ImGui::SetItemTooltip(
-        "- sign: neighbour density subtracted from self (more common, slightly faster).\n"
-        "+ sign: neighbour density added to self (more stable at high k with fewer substeps).");
-    ImGui::RadioButton("- sign  (standard)##fl", &settings.pressureMode, 0); SYNC;
-    ImGui::RadioButton("+ sign  (alt)##fl", &settings.pressureMode, 1); SYNC;
-
-    ImGui::Spacing();
-    ImGui::Checkbox("Pressure clamping##fl", &settings.pressureClamp); SYNC;
-    ImGui::SetItemTooltip(
-        "Clamp pressure contributions from neighbours.\n"
-        "Prevents negative pressure but may cause artefacts at extremes.");
-
+    
     // ── Viscosity ─────────────────────────────────────────────────────────────
     Sec("Viscosity");
     ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.01f, 0.f, 200.f, "%.3f"); SYNC;

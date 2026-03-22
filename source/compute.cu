@@ -528,7 +528,7 @@ __global__ void computeDensity(
     int* cellstart,
     int* cellend,
     int* particleindex,
-	float K_, float k, float pollycoef6, float spikycoef, float sdensity, float ndensity, bool clamping
+	float K_, float k, float pollycoef6, float spikycoef, float sdensity, float ndensity
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
@@ -615,12 +615,9 @@ __global__ void computeDensity(
         }
     }
     float pp, n_p;
-    if(clamping){
-		pp = fmaxf(k * (rho - rest_density), 0.0f);// x=density)
-    }
-    else {
+    
          pp = k * (rho - rest_density);
-    }
+    
      n_p = rhon * K_;//y= near density
    
     fluidProp[i] = make_float4(fmaxf(rho, mindensity), fmaxf(rhon, mindensity* 0.1f),pp, n_p);
@@ -642,7 +639,7 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,int maxz,int pressuremode,float rep,float dst
+    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,int maxz,float rep,float dst
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -747,12 +744,9 @@ __global__ void computePressure(
                        // float pressureterm = (p_i + p_j)/2;
                      
                         float m_j = pj.w;//particle mass stored in pos.w
-                        if (pressuremode == 0) {
+                        
                             force += -m_j * pressureterm * gradW * dir;
-                        }
-                        else if (pressuremode == 1) {
-                            force += m_j * pressureterm * gradW * dir;
-                        }
+                      
                         force += -m_j* npressureterm * gradW * dir;
                         float4 v2 = __ldg(&vel[j]);
                         float3 vj = make_float3(v2.x, v2.y, v2.z);
@@ -1182,19 +1176,17 @@ extern "C" void computephysics(float dt) {
 
             if (settings.colisionFun) {
 
-                if (settings.pridectedpos) {
+               
                     pridictedPositions << <blocks, THREADS >> > (totalBodies, positions, velocity, pridictedPos, subdt);
                     buildDynamicGrid(settings.count, d_cellsize, pridictedPos);
-                }
-                else {
-                    buildDynamicGrid(settings.count, d_cellsize, positions);
-                }
+                
+               
 
 
 
-                computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, fluidProp_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.pressureClamp);
+                computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, fluidProp_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity);
 
-                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.pressure, settings.rest_density, positions_sorted, accelration_sorted, velocity_sorted, fluidProp_sorted, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.pressureMode,settings.wallrep,settings.walldst);
+                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.pressure, settings.rest_density, positions_sorted, accelration_sorted, velocity_sorted, fluidProp_sorted, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst);
 
                 scatterForcesKernel << <blocks, THREADS >> > (totalBodies, d_particleIndex, accelration_sorted, accelration);
             }

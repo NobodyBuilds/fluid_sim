@@ -87,10 +87,9 @@ struct param {
 	bool nopause = true;
 	bool heateffect = true;
 	bool addParticle = false;
-	bool pressureClamp = false;
 	bool boundingBox = true;
-	bool pridectedpos = false;
-	bool newkernel = false;
+	
+	
 	bool recordSim = false;
 };
 extern param settings;
