@@ -1,18 +1,17 @@
-# 🌊 SPH Fluid Simulation
+<img width="1396" height="694" alt="Screenshot 2026-03-22 151122" src="https://github.com/user-attachments/assets/72d800c8-ae7a-461f-9f6b-b15ee3f46a27" /># 🌊 SPH Fluid Simulation
 
 A **real time Smoothed Particle Hydrodynamics (SPH) fluid ** simulation built for realistic fluid behavior using **GPU acceleration (CUDA)** and spatial hashing for fast neighbor searches.
 
 This project focuses on **real‑time fluid physics**, tunable physical parameters, and scalability for thousands of particles — designed for experimentation, learning, and performance.
 
 
-## notice
-not perfect yet!
-so expect errors or bugs and feel free to give feedback
------------------------
-<img width="1220" height="486" alt="Screenshot 2026-03-07 214619" src="https://github.com/user-attachments/assets/058f5045-2d8f-4ac1-bab9-b4a54e308f3c" />
-<img width="801" height="282" alt="Screenshot 2026-03-07 214649" src="https://github.com/user-attachments/assets/9d0e331d-0f11-454a-9ebc-9e39f5118f34" />
-<img width="1238" height="855" alt="Screenshot 2026-03-13 101256" src="https://github.com/user-attachments/assets/6045839e-2ab7-4c0f-87f0-623bd54c37d9" />
-<img width="1178" height="725" alt="Screenshot 2026-03-13 101357" src="https://github.com/user-attachments/assets/119d2576-3a37-4238-b4f7-9d30647ed4da" />
+<img width="1396" height="694" alt="Screenshot 2026-03-22 151122" src="https://github.com/user-attachments/assets/e17e6ce1-a995-4295-8577-c8643662a6a0" />
+
+<img width="1416" height="699" alt="Screenshot 2026-03-22 151227" src="https://github.com/user-attachments/assets/db079b09-2a57-4f93-9811-7313c8355eb2" />
+
+
+https://github.com/user-attachments/assets/7fd7fe76-9830-4114-b352-bc08ee885c7a
+
 
 -----------------------
 --
