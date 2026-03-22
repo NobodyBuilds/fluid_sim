@@ -619,11 +619,11 @@ __global__ void computeDensity(
                         float invR = rsqrtf(r2+ 1e-12f);
                         float r = r2 * invR;
                         float v = h2 - r2;
-                        
+                      //  float v2 = h - r;
                        float vcube = v * v * v;
                         
                             float d = pollycoef6 * vcube;//precomputed pollycoef6
-                        
+                       // float d = spikycoef2 * v2 * v2;
                         float m_j = particleMass;//mass
                         rho += m_j * d;
                         float x = h - r;
@@ -1113,6 +1113,7 @@ extern "C" void registerBodies() {
 }
 
 
+
 extern "C" void computephysics(float dt) {
     int blocks = (settings.count + THREADS - 1) / THREADS;
     int totalBodies = settings.count;
@@ -1127,7 +1128,7 @@ extern "C" void computephysics(float dt) {
     if (settings.nopause) {
         for (int i = 0; i < settings.substeps; i++) {
 
-            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.downf);
+            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce);
 
                
             if (settings.colisionFun) {
@@ -1158,7 +1159,9 @@ extern "C" void computephysics(float dt) {
             settings.samplecount = d_count;
 
         }
+
     }
+
    // cudaEventRecord(start);
     if (g_vboResource) {
         cudaGraphicsMapResources(1, &g_vboResource, 0);

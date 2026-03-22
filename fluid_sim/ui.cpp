@@ -289,7 +289,7 @@ static void DrawQuickContent()
     ImGui::TextDisabled("Full detail in Fluid tab.");
     ImGui::Spacing();
 
-    ImGui::SliderFloat("Gravity##q", &settings.downf, 0.0f, 1000.0f, "%.0f"); SYNC;
+    ImGui::SliderFloat("Gravity##q", &settings.gravityforce, 0.0f, 1000.0f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Constant downward acceleration per step.  0 = weightless.  150 = default.");
 
     if (ImGui::SliderFloat("h##q", &settings.h, 0.1f, 20.0f, "%.2f")) {
@@ -371,7 +371,7 @@ static void DrawFluidContent()
 
     // ── Forces ───────────────────────────────────────────────────────────────
     Sec("Forces");
-    ImGui::SliderFloat("Gravity##fl", &settings.downf, 0.f, 1000.f, "%.0f"); SYNC;
+    ImGui::SliderFloat("Gravity##fl", &settings.gravityforce, 0.f, 1000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Downward acceleration each step.");
     ImGui::InputFloat("Restitution##fl", &settings.restitution, 0.02f, 0.1f, "%.3f"); SYNC;
     ImGui::SetItemTooltip("Wall bounce coefficient.  0.0 = fully inelastic.  1.0 = perfectly elastic.");

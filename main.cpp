@@ -36,6 +36,9 @@ FluidRenderer fluidRenderer;
 const unsigned int screenWidth = 1800;
 const unsigned int screenHeight = 900;
 
+int currentWidth = (int)screenWidth;
+int currentHeight = (int)screenHeight;
+
 static double fuc_ms_avg = 0.0;
 static int fuc_samples = 0;
 
@@ -329,7 +332,7 @@ inline void worldToScreen_topLeft(float wx, float wy, float& sx, float& sy, cons
     float halfW = v.width() * 0.5f * v.zoom;
     float left = v.cx - halfW;
     float top = v.cy - halfH;
-    float scale = (float)screenHeight / (v.height * v.zoom);
+    float scale = (float)currentHeight / (v.height * v.zoom);
     sx = (wx - left) * scale;
     sy = (wy - top) * scale;
 }
@@ -363,6 +366,7 @@ void restartSimulation() {
     
     settings.count = settings.totalBodies;
     freeDynamicGrid();
+   ;
     freegpu();
     initgpu(settings.maxparticles);
 	initDynamicGrid(settings.maxparticles);
@@ -438,6 +442,7 @@ void calcKernels() {
 
 
     settings.pollycoef6 = 315.0f / (64.0f * settings.pi * h9);
+    //settings.spikycoef2 = 15.0f / (settings.pi * h5);
    settings.Sdensity = settings.pollycoef6 * h6;//self density at r=0
    settings.spikycoef = 15.0f / (settings.pi * h6);
    settings.ndensity = settings.spikycoef * h3;//near self density at r=0
@@ -465,7 +470,7 @@ void drawAll() {
 
     glm::mat4 proj = glm::perspective(
         glm::radians(camera.fov),
-        (float)screenWidth / (float)screenHeight,
+        (float)currentWidth / (float)currentHeight,
         0.1f,
         20000.0f
     );
@@ -476,7 +481,7 @@ void drawAll() {
         camera.up
     );
     glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 0.6f, 1.0f));
-    float aspect = (float)screenWidth / (float)screenHeight;
+    float aspect = (float)currentWidth / (float)screenHeight;
 
    
     if (settings.boundingBox) {
@@ -636,9 +641,30 @@ void buttons(GLFWwindow* window) {
         }
     }
     predown = down;
+
+    static bool f11down = false;
+    bool f11 = glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS;
+    if (f11 && !f11down) {
+        if (glfwGetWindowMonitor(window)) {
+            glfwSetWindowMonitor(window, nullptr, 100, 100, screenWidth, screenHeight, 0);
+        }
+        else {
+            GLFWmonitor* primary = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode = glfwGetVideoMode(primary);
+            glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
+        }
+    }
+    f11down = f11;
 }
 void framebuffer_size_callback(GLFWwindow* w, int width, int height) {
+    if (width == 0 || height == 0) return;
+    currentWidth = width;
+    currentHeight = height;
     glViewport(0, 0, width, height);
+    view.cx = width * 0.5f;
+    view.cy = height * 0.5f;
+    view.height = (float)height;
+    view.aspect = (float)width / (float)height;
 }
 int main() {
     srand((unsigned)time(nullptr));
