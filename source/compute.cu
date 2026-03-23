@@ -571,9 +571,7 @@ __global__ void computeDensity(
     int cellsChecked = 0;
     int cellsWithParticles = 0;
 
-    // Debug for first particle
-    bool Debug = (i == 0||i == 5||i == 10||i == 50||i == 100||i == 500||i == 1000);
- /*  bool debug = 0;*/
+  
 
    float m_i = particleMass;
   
@@ -657,7 +655,7 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,int maxz,float rep,float dst,float pressure,float particlemass
+    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,float maxz,float rep,float dst,float pressure,float particlemass
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -965,53 +963,35 @@ __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4
     acl[i] = a;
 }
 
+__device__ inline float randf(unsigned int seed) {
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return (float)(seed & 0xFFFFFF) / (float)0xFFFFFF;
+}
+
 __global__ void addparticles(int n, float h,
     float Size, float Mass,
     
     float maxX, float maxY, float maxz,
     float minX, float minY, float minZ,
-    float4* position, float4* velocity, float4* accelration,int flowcount) {
+    float4* position, float4* velocity, float4* accelration,int flowcount,int framecount) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (i >= flowcount) return;
     int k = n + i;
-
     float x, y, z;
     float particle_spacing = h * 1.001f;
-
-    int particles_per_side = (int)ceil(cbrt((float)flowcount));
-    int maxXcount = (int)((maxX - minX) / particle_spacing);
-    int maxYcount = (int)((maxY - minY) / particle_spacing);
-    int maxZcount = (int)((maxz - minZ) / particle_spacing);
-
-    // Use cubic grid but respect physical limits
-    int nx = fminf(particles_per_side, fmaxf(1, maxXcount));
-    int ny = fminf(particles_per_side, fmaxf(1, maxYcount));
-    int nz = fminf(particles_per_side, fmaxf(1, maxZcount));
-
-    //int nx = max(1, int((maxX - minX) / particle_spacing));
-    //int ny = max(1, int((maxY - minY) / particle_spacing));
-    //int nz = ceil(float(n) / (nx * ny));
-
-
-     //// Convert flattened index to 3D grid coordinates
+    int nx = (int)ceilf(sqrtf((float)flowcount));
     int ix = i % nx;
-    int iy = (i / nx) % ny;
-    int iz = i / (nx * ny);
+    int iy = i / nx;
 
-    // Calculate grid dimensions
     float gridSizeX = (nx - 1) * particle_spacing;
-    float gridSizeY = (ny - 1) * particle_spacing;
-    float gridSizeZ = (nz - 1) * particle_spacing;
+    float gridSizeY = (nx - 1) * particle_spacing;
 
-    // Calculate starting position with half particle spacing offset from edges
-    float startX = minX + (maxX - minX - gridSizeX) * 0.5f;
-    float startY = minY + (maxY - minY - gridSizeY) * 0.5f;
-    float startZ = maxz;  // Offset from top
-
-    // Generate grid
-    x = startX + ix * particle_spacing;
-    y = startY + iy * particle_spacing;
-    z = startZ - iz * particle_spacing;  // Start at maxZ with offset, go downward
+    x = (maxX + minX) * 0.5f - gridSizeX * 0.5f + ix * particle_spacing;
+    y = (maxY + minY) * 0.5f - gridSizeY * 0.5f + iy * particle_spacing;
+    z = maxz - particle_spacing * 2.0f;
 
     position[k].x = x;
     position[k].y = y;
@@ -1021,7 +1001,7 @@ __global__ void addparticles(int n, float h,
 
     velocity[k].x = 0.0f;
     velocity[k].y = 0.0f;
-    velocity[k].z = 0.0f;
+    velocity[k].z = -150.0f;
 
     velocity[k].w = 0.0f;// w used for particle neardensity
 
@@ -1152,11 +1132,17 @@ extern "C" void computephysics(float dt) {
 
 
         if (settings.addParticle == true) {
-            addparticles << <blocks, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass, 
-                 settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
-                positions, velocity, accelration, settings.flowcount);
-            d_count += settings.flowcount;
-            settings.samplecount = d_count;
+			static float frametime = 0.0f;
+			static int framecount = 0;
+            framecount++;
+            frametime += dt;
+            if (frametime >= 0.005f   ) {
+                addparticles << <blocks, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass,
+                    settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
+                    positions, velocity, accelration, settings.flowcount,framecount);
+            settings.samplecount += settings.flowcount;
+				frametime = 0;
+            }
 
         }
 

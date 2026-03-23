@@ -366,7 +366,7 @@ void restartSimulation() {
     
     settings.count = settings.totalBodies;
     freeDynamicGrid();
-   ;
+    settings.samplecount = 0;
     freegpu();
     initgpu(settings.maxparticles);
 	initDynamicGrid(settings.maxparticles);

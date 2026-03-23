@@ -437,8 +437,14 @@ static void DrawParticlesContent()
         ImGui::InputInt("Flow##ptem", &settings.flowcount); SYNC;
         ImGui::SetItemTooltip("Particles injected per frame.  Keep low (1-20) to avoid sudden buffer overflow.");
         ImGui::TextDisabled("emitted  %d", settings.samplecount);
-    }
 
+    }
+  
+
+        ImGui::Spacing();
+        if (DangerButton("Restart"))
+            restartSimulation();
+        ImGui::SetItemTooltip("Wipe all particles and respawn.");
     
 }
 

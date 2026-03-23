@@ -11,9 +11,9 @@ struct param {
 	float heatMultiplier = 15.0f;
 	float h = 3.5f;
 	float h2 = h * h;
-	float rest_density = 0.1884f;
-	float pressure = 3700.0f;
-	float nearpressure = 1000.0f;
+	float rest_density = 0.12f;
+	float pressure = 4500.0f;
+	float nearpressure = 100.0f;
 	float visc = 6.0f;
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
@@ -28,6 +28,7 @@ struct param {
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
+	float rad = 1.0f;
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
