@@ -11,10 +11,10 @@ struct param {
 	float heatMultiplier = 15.0f;
 	float h = 3.5f;
 	float h2 = h * h;
-	float rest_density = 0.12f;
-	float pressure = 4500.0f;
-	float nearpressure = 100.0f;
-	float visc = 6.0f;
+	float rest_density = 0.13f;
+	float pressure = 10000.0f;
+	float nearpressure = 2000.0f;
+	float visc = 2.50f;
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
@@ -29,6 +29,7 @@ struct param {
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
 	float rad = 1.0f;
+	
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
@@ -50,8 +51,8 @@ struct param {
 	float bgColorR = 0.11373f, bgColorG = 0.11373f, bgColorB = 0.11373f;
 
 	// Water body colours (screen-space mode)
-	float shallowColorR = 0.0f, shallowColorG = 0.59216f, shallowColorB = 0.68235f;
-	float deepColorR = 0.01176f, deepColorG = 0.21569f, deepColorB = 0.25098f;
+	float shallowColorR = 0.0f, shallowColorG = 0.34117f, shallowColorB = 0.68235f;
+	float deepColorR = 0.01176f, deepColorG = 0.047058f, deepColorB = 0.25098f;
 	float absorption = 4.30f;     // Beer-Lambert coefficient
 
 	// Blur settings (screen-space mode)
@@ -59,8 +60,8 @@ struct param {
 	float blurDepthFall = 2.0f;    // Bilateral depth-edge sharpness
 
 	// Sky environment for reflection (screen-space mode)
-	float skyZenithR = 0.05f, skyZenithG = 0.15f, skyZenithB = 0.45f;
-	float skyHorizonR = 0.0f, skyHorizonG = 0.25096f, skyHorizonB = 0.46667f;
+	float skyZenithR = 1.0f, skyZenithG = 1.0f, skyZenithB = 1.0f;
+	float skyHorizonR = 0.17254f, skyHorizonG = 0.411764f, skyHorizonB = 0.6117647f;
 	float reflStrength = 0.70f;
 
 	float maxframetime = 16.67;
@@ -74,12 +75,12 @@ struct param {
 	int star = 0;
 	
 	int samplecount = totalBodies;
-	int flowcount = 5;
-	int substeps = 4;
+	int flowcount = 10;
+	int substeps = 1;
 	int fpsCount = 0;
 	int pressureMode = 0;
 	int shaderType = 1;
-
+	
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding
 	bool colisionFun = true;

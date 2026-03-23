@@ -124,7 +124,7 @@ extern"C" void initgpu(int count) {
     cudaMalloc(&positions_sorted, count * sizeof(float4));
     cudaMalloc(&velocity_sorted, count * sizeof(float4));
   
-
+	
    
    
     cudaError_t err = cudaGetLastError();
@@ -137,7 +137,7 @@ extern"C" void initgpu(int count) {
 extern "C" void freegpu() {
     cudaFree(positions);   cudaFree(positions_sorted);
     cudaFree(velocity);    cudaFree(velocity_sorted);
-   
+   cudaFree(accelration);
 
 };
 
@@ -571,8 +571,7 @@ __global__ void computeDensity(
     int cellsChecked = 0;
     int cellsWithParticles = 0;
 
-  
-
+	
    float m_i = particleMass;
   
    float rhon = m_i * ndensity;
@@ -634,7 +633,7 @@ __global__ void computeDensity(
             }
         }
     }
-    
+   
 	pos[i].w = fmaxf(rho, mindensity);
 	vel[i].w = fmaxf(rhon, mindensity * 0.1f);
 }
@@ -784,12 +783,7 @@ __global__ void computePressure(
             }
         }
     }
-    if (debug) {
-        printf("pressure Total: checked %d cells, %d had particles, found %d neighbors\n",
-            cellsChecked, cellsWithParticles, neighborCount);
-      
-    }
-    //apply pressure
+   
     float4 accl;
 
     accl.x = (force.x + visc.x );
@@ -1121,7 +1115,7 @@ extern "C" void computephysics(float dt) {
 					computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex,settings.nearpressure,settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
                     
 
-                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.pressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass);
+                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass);
 
                
             }

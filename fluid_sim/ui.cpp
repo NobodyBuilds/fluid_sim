@@ -380,6 +380,8 @@ static void DrawFluidContent()
     ImGui::DragFloat("Wall dist##fl", &settings.walldst, 0.01f, 0.f, 10.f, "%.2f"); SYNC;
     ImGui::SetItemTooltip("Distance from wall at which repulsion kicks in.");
 
+	
+
     // ── Pipeline toggles ──────────────────────────────────────────────────────
     Sec("Pipeline");
     ImGui::Checkbox("SPH forces##fl", &settings.colisionFun); SYNC;
