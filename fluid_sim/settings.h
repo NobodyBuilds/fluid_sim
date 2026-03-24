@@ -12,8 +12,8 @@ struct param {
 	float h = 3.5f;
 	float h2 = h * h;
 	float rest_density = 0.13f;
-	float pressure = 10000.0f;
-	float nearpressure = 2000.0f;
+	float pressure = 7200.0f;
+	float nearpressure = 1000.0f;
 	float visc = 2.50f;
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
