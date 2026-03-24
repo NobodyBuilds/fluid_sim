@@ -7,14 +7,14 @@ struct param {
 	float size = 1.0f;
 	float particleMass = 1.0f;
 	float cold = 4.500f;
-	float conductionrate = 4.0f;
+	
 	float heatMultiplier = 15.0f;
 	float h = 3.5f;
 	float h2 = h * h;
 	float rest_density = 0.13f;
 	float pressure = 7200.0f;
 	float nearpressure = 1000.0f;
-	float visc = 2.50f;
+	float visc = 0.070f;
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
@@ -28,13 +28,13 @@ struct param {
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
-	float rad = 1.0f;
+	
 	
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
 	float viscosity = 0.0f;
-	float visclap = 0.0f;
+	
 	float wx = 0.0f;
 	float wy = 0.0f;
 	float wz = 0.0f;
@@ -71,7 +71,7 @@ struct param {
 	int totalBodies = 20000;
 	int maxparticles = totalBodies * 5;
 	int count = totalBodies;
-	int A = 0;
+
 	int star = 0;
 	
 	int samplecount = totalBodies;

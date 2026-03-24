@@ -108,7 +108,7 @@ float4* velocity = nullptr; //vx,vy,vz,neardensity
 float4* accelration = nullptr;//ax,ay,az,heat in heat
 
 
-
+int* ncount = nullptr;
 
 //stroage for sorting
 float4* positions_sorted = nullptr;
@@ -123,7 +123,7 @@ extern"C" void initgpu(int count) {
 
     cudaMalloc(&positions_sorted, count * sizeof(float4));
     cudaMalloc(&velocity_sorted, count * sizeof(float4));
-  
+	cudaMalloc(&ncount, count * sizeof(int));
 	
    
    
@@ -138,7 +138,11 @@ extern "C" void freegpu() {
     cudaFree(positions);   cudaFree(positions_sorted);
     cudaFree(velocity);    cudaFree(velocity_sorted);
    cudaFree(accelration);
-
+   cudaFree(ncount);
+    positions = nullptr;
+    velocity = nullptr;
+    accelration = nullptr;
+    ncount = nullptr;
 };
 
  struct GLVertex {
@@ -571,7 +575,7 @@ __global__ void computeDensity(
     int cellsChecked = 0;
     int cellsWithParticles = 0;
 
-	
+	bool debug = (i == 0 || i == 345 || i == 344 || i == 100 || i == 500 || i == 1000 || i == 1500 || i == 2000 || i == 2500 || i == 3000 || i == 3500 || i == 4000 || i == 4500 || i == 5000);
    float m_i = particleMass;
   
    float rhon = m_i * ndensity;
@@ -633,6 +637,10 @@ __global__ void computeDensity(
             }
         }
     }
+    if (debug) {
+        printf("density:%5f \n",
+			 rho);
+    }
    
 	pos[i].w = fmaxf(rho, mindensity);
 	vel[i].w = fmaxf(rhon, mindensity * 0.1f);
@@ -654,7 +662,7 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,float maxz,float rep,float dst,float pressure,float particlemass
+    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,float maxz,float rep,float dst,float pressure,float particlemass,int* ncount,float ndensity
 
 ) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -679,7 +687,7 @@ __global__ void computePressure(
    
 
     float p_i = pressure * (p.w - restDensity);
-    float pn_i = k_ * v.w;
+    float pn_i = k_ * fmaxf(v.w - ndensity*0.5f,0.0f);
    
     float3 visc = { 0.0f, 0.0f, 0.0f };
     float3 deltaV = { 0.0f,0.0f,0.0f };
@@ -759,21 +767,21 @@ __global__ void computePressure(
                         float npressureterm =NpressuretermRho_i + np_j / (nrho_j * nrho_j);
                        // float pressureterm = (p_i + p_j)/2;
                      
-                        float m_j = particlemass;//particle mass stored in pos.w
+                        float m_j = particlemass;//particle mass 
                         
                             force += -m_j * pressureterm * gradW * dir;
                       
                         force += -m_j* npressureterm * gradW * dir;
                         float4 v2 = __ldg(&vel[j]);
                         float3 vj = make_float3(v2.x, v2.y, v2.z);
-                        float3 vij = vj - vi;
+                        float3 vij = (vj - vi);
 
                         float lapW = viscK * x;
                         float viscosityCoeff = st;
                         visc += viscosityCoeff
                             * m_j
                             * vij
-                            / rho_j
+							/ (rho_i * rho_j)  
                             * lapW;
                         
 
@@ -792,6 +800,7 @@ __global__ void computePressure(
     accl.w = 0.0f;
 	int org = particleIndex[i]; // where this particle came from in the original unsorted array
 
+	ncount[org] = neighborCount;
 	acl[org] += accl; // write back to original slot in acl array
     velocity[org].x += accl.x*dt *0.5;
     velocity[org].y += accl.y*dt *0.5;
@@ -807,7 +816,7 @@ __global__ void computePressure(
 
 //update
 __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4* vel ,float4* acl,
-    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf
+    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int* ncount
 ) {
     // Vec3 acc_new;
 
@@ -825,6 +834,12 @@ __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4
     vl.y += a.y * dt*0.5f;
     vl.z += a.z * dt*0.5f;
     vl.z -= downf * dt;
+
+    if (ncount[i] < 5) {
+        vl.x *= 0.99f;
+		vl.y *= 0.99f;
+        vl.z *= 0.99f;
+    }
 
     p.x += vl.x * dt;
     p.y += vl.y * dt;
@@ -1102,7 +1117,7 @@ extern "C" void computephysics(float dt) {
     if (settings.nopause) {
         for (int i = 0; i < settings.substeps; i++) {
 
-            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce);
+            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce,ncount);
 
                
             if (settings.colisionFun) {
@@ -1115,7 +1130,7 @@ extern "C" void computephysics(float dt) {
 					computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex,settings.nearpressure,settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
                     
 
-                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass);
+                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass,ncount,settings.ndensity);
 
                
             }
