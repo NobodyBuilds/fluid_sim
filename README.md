@@ -3,20 +3,39 @@ A **real time Smoothed Particle Hydrodynamics (SPH) fluid ** simulation built fo
 
 This project focuses on **real‑time fluid physics**, tunable physical parameters, and scalability for thousands of particles — designed for experimentation, learning, and performance.
 
+------
+DEMOS
+
 
 <img width="1577" height="989" alt="Screenshot 2026-03-22 220007" src="https://github.com/user-attachments/assets/b38cf0bd-36fb-4b93-be6e-71a709db4a86" />
 
 
 <img width="1574" height="992" alt="Screenshot 2026-03-22 215431" src="https://github.com/user-attachments/assets/3e141bb0-af5e-4b9e-9e17-45c86015cd5c" />
 
+-------------
+--1 MILLION PARTICLES SIMULATED AT 130MS PER FRAME,18x speedup footage
 
 
 https://github.com/user-attachments/assets/5a922ffb-03c7-4e41-95fe-d50627320336
 
+---------------
+1 MILLION PARTICLES SIMULATED AT 150MS PER FRAME ON RTX2050A WITH 45W TGP ,25X SPEED UP FOOTAGE
+
+
+
+
+
+
+
+https://github.com/user-attachments/assets/050982f2-42cd-4b9e-bb81-10b7b968c721
+
+
+
+
 
 
 -----------------------
---
+
 ---
 ## comtrols
 wasd for camera movement
