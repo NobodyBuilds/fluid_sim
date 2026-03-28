@@ -32,6 +32,14 @@ static int* d_particleHash_alt = nullptr;   // double buffer
 static int* d_particleIndex_alt = nullptr;
 int HASH_TABLE_SIZE;     // 2^18 - adjust based on particle count
 int d_count;
+
+//debug
+__device__ int min_nb, max_nb, avg_nb = 0;
+__device__ float min_Density, max_Density, avg_Density = 0;
+__device__ float min_nearDensity, max_nearDensity, avg_nearDensity = 0;
+
+
+
 //device helpers
 __host__ __device__ inline float clamp(float x, float lo, float hi)
 {
@@ -108,7 +116,7 @@ float4* velocity = nullptr; //vx,vy,vz,neardensity
 float4* accelration = nullptr;//ax,ay,az,heat in heat
 
 
-int* ncount = nullptr;
+int* ncount = nullptr;//saves nighbor count per particle to apply airdrag later
 
 //stroage for sorting
 float4* positions_sorted = nullptr;
@@ -300,6 +308,7 @@ __device__ __host__ inline unsigned int getHashFromPos(float x, float y, float z
 
 
 extern "C" void initDynamicGrid(int maxParticles) {
+    //using maxpartcles which are 2-5X total particles for emiiter to work and dynamic add or remove particles
     HASH_TABLE_SIZE = 1;
     while (HASH_TABLE_SIZE < maxParticles * 2)
         HASH_TABLE_SIZE <<= 1;
@@ -441,7 +450,8 @@ __global__ void reorderParticlesKernel(
     int src = sortedIndex[i];   // where this particle CAME from in the original array
 	float4 pi = __ldg(&posIn[src]);
 	float4 vi = __ldg(&velIn[src]);
-	
+	//using pridicted positiopn into sorted arrays for density and pressure kernel  and help in stability
+	//directly writeing to sorted arrays to avoid extra copy and also we will be using predicted position for density and pressure calculation which will help in stability
 	float px = pi.x + vi.x * dt;
 	float py = pi.y + vi.y * dt;
 	float pz = pi.z + vi.z * dt;
@@ -520,7 +530,7 @@ void buildDynamicGrid(
   
 
     findCellBoundariesKernel << <blocks, THREADS >> > (numParticles, d_particleHash, d_cellStart, d_cellEnd);
-
+    //sorteding arrays 
     reorderParticlesKernel << <blocks, THREADS >> > (
         numParticles,dt,
         d_particleIndex,        // tells us: sorted slot i came from original slot src
@@ -556,6 +566,8 @@ __global__ void computeDensity(
     int* particleindex,
 	float K_, float k, float pollycoef6, float spikycoef, float sdensity, float ndensity, float particleMass
 ) {
+	//no shared memory because the arrays are sorted and coalesced access is good enough, also we are doing more computation per neighbor which helps hide latency.
+    //shared memory has been tried and got no difference
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
 
@@ -637,10 +649,10 @@ __global__ void computeDensity(
             }
         }
     }
-    if (debug) {
+   /* if (debug) {
         printf("density:%5f \n",
 			 rho);
-    }
+    }*/
    
 	pos[i].w = fmaxf(rho, mindensity);
 	vel[i].w = fmaxf(rhon, mindensity * 0.1f);
@@ -662,9 +674,11 @@ __global__ void computePressure(
     float st,
     int hs,float h2
     ,int* cellstart,int* cellend,
-    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,float maxz,float rep,float dst,float pressure,float particlemass,int* ncount,float ndensity
+    int* particleIndex,float spikyGradv,float viscK,float pollycoef6,float minZ,float minX,float minY,float maxX,float maxY,float maxz,float rep,float dst,float pressure,float particlemass,int* ncount,float ndensity,float nrd
 
 ) {
+
+	//no shared memory because the arrays are sorted and coalesced access is good enough, also we are doing more computation per neighbor which helps hide latency.
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles) return;
 
@@ -687,7 +701,7 @@ __global__ void computePressure(
    
 
     float p_i = pressure * (p.w - restDensity);
-    float pn_i = k_ * fmaxf(v.w - ndensity*0.5f,0.0f);
+    float pn_i = k_* (v.w - nrd);
    
     float3 visc = { 0.0f, 0.0f, 0.0f };
     float3 deltaV = { 0.0f,0.0f,0.0f };
@@ -746,7 +760,7 @@ __global__ void computePressure(
                         float r = r2 * invR;
                       
                         float p_j = pressure * (pj.w - restDensity);
-                        float np_j = k_ * vj.w;
+                        float np_j = k_ * (vj.w - nrd);
 
                         float3 dir = { dx_val *invR, dy_val * invR, dz_val * invR };
 
@@ -759,7 +773,7 @@ __global__ void computePressure(
                         float rho_j = pj.w;
                         float nrho_j = vj.w;
                         float x = h - r;
-                        float gradW = spikyGradv *x*x;//precomputed -gradw
+                        float gradW = spikyGradv *x*x;//precomputed gradw in negative value
                        
                         
                       
@@ -799,9 +813,10 @@ __global__ void computePressure(
     accl.z = (force.z + visc.z );
     accl.w = 0.0f;
 	int org = particleIndex[i]; // where this particle came from in the original unsorted array
-
+    //velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy
 	ncount[org] = neighborCount;
 	acl[org] += accl; // write back to original slot in acl array
+    //velocity verlet intigration fisrt step
     velocity[org].x += accl.x*dt *0.5;
     velocity[org].y += accl.y*dt *0.5;
     velocity[org].z += accl.z*dt *0.5;
@@ -811,12 +826,50 @@ __global__ void computePressure(
    
 }
 
-//testing commits 22223w63
+__device__ void atomicMinFloat(float* addr, float val) {
+    int* addr_i = (int*)addr;
+    int old = *addr_i, assumed;
+    do {
+        assumed = old;
+        if (__int_as_float(assumed) <= val) break;
+        old = atomicCAS(addr_i, assumed, __float_as_int(val));
+    } while (assumed != old);
+}
 
+__device__ void atomicMaxFloat(float* addr, float val) {
+    int* addr_i = (int*)addr;
+    int old = *addr_i, assumed;
+    do {
+        assumed = old;
+        if (__int_as_float(assumed) >= val) break;
+        old = atomicCAS(addr_i, assumed, __float_as_int(val));
+    } while (assumed != old);
+}
+
+__global__ void debug(int n, float4* pos, float4* vel, int* ncount) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    int   nc = ncount[i];
+    float d = pos[i].w;
+    float nd = vel[i].w;
+
+    atomicMin(&min_nb, nc);
+    atomicMax(&max_nb, nc);
+    atomicAdd(&avg_nb, nc);
+
+    atomicMinFloat(&min_Density, d);
+    atomicMaxFloat(&max_Density, d);
+    atomicAdd(&avg_Density, d);
+
+    atomicMinFloat(&min_nearDensity, nd);
+    atomicMaxFloat(&max_nearDensity, nd);
+    atomicAdd(&avg_nearDensity, nd);
+}
 
 //update
 __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4* vel ,float4* acl,
-    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int* ncount
+    float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf,int* ncount,float coeff
 ) {
     // Vec3 acc_new;
 
@@ -827,7 +880,7 @@ __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4
     float4 vl = __ldg(&vel[i]);
     float4 a  = __ldg(&acl[i]);
 
-  
+	
       
     
     vl.x += a.x * dt*0.5f;
@@ -836,9 +889,10 @@ __global__ void updateKernel(float dt, int count, float cold, float4* pos,float4
     vl.z -= downf * dt;
 
     if (ncount[i] < 5) {
-        vl.x *= 0.99f;
-		vl.y *= 0.99f;
-        vl.z *= 0.99f;
+        float drag = expf(-coeff * dt);
+        vl.x *= drag;
+		vl.y *= drag;
+        vl.z *= drag;
     }
 
     p.x += vl.x * dt;
@@ -978,7 +1032,7 @@ __device__ inline float randf(unsigned int seed) {
     seed ^= seed << 5;
     return (float)(seed & 0xFFFFFF) / (float)0xFFFFFF;
 }
-
+//emitter
 __global__ void addparticles(int n, float h,
     float Size, float Mass,
     
@@ -1029,7 +1083,7 @@ __global__ void addparticles(int n, float h,
 __global__ void registerKernel(int n,float h,
    
   
-    float maxX,float maxY,float maxz,
+    float maxX,float maxY,float maxZ,
     float minX,float minY,float minZ,
     float4* position,float4* velocity,float4* accelration
 
@@ -1039,41 +1093,37 @@ __global__ void registerKernel(int n,float h,
 
     float x, y, z;
     float particle_spacing = h * 0.6f;
-
-    int particles_per_side = (int)ceil(cbrt((float)n));
-    int maxXcount = (int)((maxX - minX) / particle_spacing);
-    int maxYcount = (int)((maxY - minY) / particle_spacing);
-    int maxZcount = (int)((maxz - minZ) / particle_spacing);
-
-    // Use cubic grid but respect physical limits
-    int nx = fminf(particles_per_side, fmaxf(1, maxXcount));
-    int ny = fminf(particles_per_side, fmaxf(1, maxYcount));
-    int nz = fminf(particles_per_side, fmaxf(1, maxZcount));
-
-   //int nx = max(1, int((maxX - minX) / particle_spacing));
-   //int ny = max(1, int((maxY - minY) / particle_spacing));
-   //int nz = ceil(float(n) / (nx * ny));
-
-    
-    //// Convert flattened index to 3D grid coordinates
+    float Lx = maxX - minX;
+    float Ly = maxY - minY;
+    float Lz = maxZ - minZ;
+    // Distribute particles proportionally to box shape
+    float cbrtN = cbrtf((float)n);
+    float scale = cbrtf(Lx * Ly * Lz); // geometric mean volume
+    int nx = max(1, (int)roundf(cbrtN * (Lx / scale)));
+    int ny = max(1, (int)roundf(cbrtN * (Ly / scale)));
+    int nz = max(1, (int)ceilf((float)n / (nx * ny))); // nz fills remainder
+    // Clamp to physical box limits
+    nx = min(nx, max(1, (int)floorf(Lx / particle_spacing) + 1));
+    ny = min(ny, max(1, (int)floorf(Ly / particle_spacing) + 1));
+    nz = min(nz, max(1, (int)floorf(Lz / particle_spacing) + 1));
+    // 3D index
     int ix = i % nx;
     int iy = (i / nx) % ny;
     int iz = i / (nx * ny);
-
-    // Calculate grid dimensions
+    // Actual grid footprint
     float gridSizeX = (nx - 1) * particle_spacing;
     float gridSizeY = (ny - 1) * particle_spacing;
     float gridSizeZ = (nz - 1) * particle_spacing;
-
-    // Calculate starting position with half particle spacing offset from edges
-    float startX = minX + (maxX - minX - gridSizeX) * 0.5f;
-    float startY = minY + (maxY - minY - gridSizeY) * 0.5f;
-    float startZ = minZ + (maxz - minZ - gridSizeZ/2);  // Offset from top
-
-    // Generate grid
+    // Center the grid in the box on ALL 3 axes
+    float cx = (minX + maxX) * 0.5f;
+    float cy = (minY + maxY) * 0.5f;
+    float cz = (minZ + maxZ) * 0.5f;
+    float startX = cx - gridSizeX * 0.5f;
+    float startY = cy - gridSizeY * 0.5f;
+    float startZ = cz - gridSizeZ * 0.5f;
     x = startX + ix * particle_spacing;
     y = startY + iy * particle_spacing;
-    z = startZ - iz * particle_spacing;  // Start at maxZ with offset, go downward
+    z = startZ + iz * particle_spacing; // Start at maxZ with offset, go downward
     
     position[i].x = x;
     position[i].y = y;
@@ -1106,31 +1156,31 @@ extern "C" void registerBodies() {
 extern "C" void computephysics(float dt) {
     int blocks = (settings.count + THREADS - 1) / THREADS;
     int totalBodies = settings.count;
-    cudaError_t err;
-    float d_cellsize = settings.h * 1.0f;//tweaak it gng
+   // cudaError_t err;
+    float d_cellsize = settings.h * settings.cellSize;//tweaak it gng
     
-    float subdt = settings.fixedDt / settings.substeps;
+  //  float subdt = settings.fixedDt / settings.substeps;
 	float deltaTime = dt / settings.substeps;
    
     cudaGraphicsUnmapResources(1, &g_vboResource, 0);
    
     if (settings.nopause) {
         for (int i = 0; i < settings.substeps; i++) {
-
-            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce,ncount);
-
+            //update positipons
+            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce,ncount,settings.airdrag);
+            //acelrations reset
                
             if (settings.colisionFun) {
-                
-                    buildDynamicGrid(settings.count, d_cellsize, positions,subdt);
+                //builds grid and sorted arrays with pridicted positions
+                    buildDynamicGrid(settings.count, d_cellsize, positions,deltaTime);
                 
                
 
-
+                    //uses p pos for stability
 					computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex,settings.nearpressure,settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
                     
-
-                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass,ncount,settings.ndensity);
+                    //reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
+                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass,ncount,settings.ndensity,settings.nearRestDensity);
 
                
             }
@@ -1138,8 +1188,67 @@ extern "C" void computephysics(float dt) {
 
 
         }
+        //DEBUG INFO not always active
+		static int framecount = 0;
+		++framecount;
+        if (framecount >= 100 && settings.debug == true) {
 
+            int   izero = 0, ibig = INT_MAX;
+            float fzero = 0.0f, fbig = FLT_MAX, fnbig = -FLT_MAX;
 
+            cudaMemcpyToSymbol(min_nb, &ibig, sizeof(int));
+            cudaMemcpyToSymbol(max_nb, &izero, sizeof(int));
+            cudaMemcpyToSymbol(avg_nb, &izero, sizeof(int));
+
+            cudaMemcpyToSymbol(min_Density, &fbig, sizeof(float));
+            cudaMemcpyToSymbol(max_Density, &fnbig, sizeof(float));
+            cudaMemcpyToSymbol(avg_Density, &fzero, sizeof(float));
+
+            cudaMemcpyToSymbol(min_nearDensity, &fbig, sizeof(float));
+            cudaMemcpyToSymbol(max_nearDensity, &fnbig, sizeof(float));
+            cudaMemcpyToSymbol(avg_nearDensity, &fzero, sizeof(float));
+
+            // run — use sorted arrays, that's where density lives
+            debug << <blocks, THREADS >> > (totalBodies, positions_sorted, velocity_sorted, ncount);
+            cudaDeviceSynchronize();
+
+            // read back
+            int   h_minN, h_maxN, h_sumN;
+            float h_minD, h_maxD, h_sumD;
+            float h_minND, h_maxND, h_sumND;
+
+            cudaMemcpyFromSymbol(&h_minN, min_nb, sizeof(int));
+            cudaMemcpyFromSymbol(&h_maxN, max_nb, sizeof(int));
+            cudaMemcpyFromSymbol(&h_sumN, avg_nb, sizeof(int));
+
+            cudaMemcpyFromSymbol(&h_minD, min_Density, sizeof(float));
+            cudaMemcpyFromSymbol(&h_maxD, max_Density, sizeof(float));
+            cudaMemcpyFromSymbol(&h_sumD, avg_Density, sizeof(float));
+
+            cudaMemcpyFromSymbol(&h_minND, min_nearDensity, sizeof(float));
+            cudaMemcpyFromSymbol(&h_maxND, max_nearDensity, sizeof(float));
+            cudaMemcpyFromSymbol(&h_sumND, avg_nearDensity, sizeof(float));
+
+            // push to settings
+            settings.min_n = h_minN;
+            settings.max_n = h_maxN;
+            settings.avg_n = (float)h_sumN / totalBodies;
+
+            settings.min_density = h_minD;
+            settings.max_density = h_maxD;
+            settings.avg_density = h_sumD / totalBodies;
+
+            settings.min_neardensity = h_minND;
+            settings.max_neardensity = h_maxND;
+            settings.avg_neardensity = h_sumND / totalBodies;
+
+			framecount = 0;
+        }
+     //   cudaMemcpy(&settings.samplen, ncount+2, sizeof(int), cudaMemcpyDeviceToHost);
+
+        //emiter
+        //frametime for stability
+		//prevents buffer overlow when particles reach 98.5% of buffer size or the maxframetime set by user is reached, also prevents adding too many particles at once which causes instability, also adding particles gradually looks better
         if (settings.addParticle == true) {
 			static float frametime = 0.0f;
 			static int framecount = 0;

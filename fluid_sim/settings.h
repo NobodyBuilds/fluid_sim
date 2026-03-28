@@ -9,17 +9,17 @@ struct param {
 	float cold = 4.500f;
 	
 	float heatMultiplier = 15.0f;
-	float h = 3.5f;
+	float h = 3.50f;
 	float h2 = h * h;
 	float rest_density = 0.13f;
-	float pressure = 7200.0f;
+	float pressure = 8500.0f;
 	float nearpressure = 1000.0f;
 	float visc = 0.070f;
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -50.0f;
-	float maxX = 250.0f;
+	float maxX = 200.0f;
 	float minY = -50.0f;
 	float maxY = 50.0f;
 	float minZ = 0.0f;
@@ -28,13 +28,13 @@ struct param {
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
-	
-	
+	float cellSize = 1.0f;
+	float nearRestDensity =  0.150f;
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
 	float viscosity = 0.0f;
-	
+	float airdrag = 1.0f;
 	float wx = 0.0f;
 	float wy = 0.0f;
 	float wz = 0.0f;
@@ -66,12 +66,15 @@ struct param {
 
 	float maxframetime = 16.67;
 
+	float min_density, max_density, avg_density = 0;
+	float min_neardensity, max_neardensity, avg_neardensity = 0;
+
 	double fuc_ms = 0.0;
 	// === INT VARIABLES (4 bytes each) ===
-	int totalBodies = 20000;
+	int totalBodies = 30000;
 	int maxparticles = totalBodies * 5;
 	int count = totalBodies;
-
+	int min_n, max_n, avg_n = 0;
 	int star = 0;
 	
 	int samplecount = totalBodies;
@@ -80,7 +83,7 @@ struct param {
 	int fpsCount = 0;
 	int pressureMode = 0;
 	int shaderType = 1;
-	
+	int samplen = 1;
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding
 	bool colisionFun = true;
@@ -89,7 +92,7 @@ struct param {
 	bool heateffect = true;
 	bool addParticle = false;
 	bool boundingBox = true;
-	
+	bool debug = false;
 	
 	bool recordSim = false;
 };

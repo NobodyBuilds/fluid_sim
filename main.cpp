@@ -437,7 +437,7 @@ void calcKernels() {
    
    
         
-    //   settings.rest_density = 0.1036f * powf(3.5f / settings.h, 3.0f);
+     //  settings.rest_density = 0.1036f * powf(3.5f / settings.h, 3.0f);
 
 
 
@@ -655,6 +655,17 @@ void buttons(GLFWwindow* window) {
         }
     }
     f11down = f11;
+    static bool xdown = false;
+	bool x = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
+    if(x && !xdown)
+    {
+        if (settings.debug == true) {
+            settings.debug = false;
+        }
+        else if (settings.debug == false) {
+            settings.debug = true;
+        }
+	}
 }
 void framebuffer_size_callback(GLFWwindow* w, int width, int height) {
     if (width == 0 || height == 0) return;

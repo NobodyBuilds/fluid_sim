@@ -347,18 +347,23 @@ static void DrawFluidContent()
         ImGui::InputFloat("visc lap", &settings.viscosity, 0, 0, "%.4e");
         ImGui::InputFloat("self rho", &settings.Sdensity, 0, 0, "%.4e");
         ImGui::InputFloat("near self", &settings.ndensity, 0, 0, "%.4e");
+		ImGui::Text("neighbor count: min:%d  max: %d  avg: %.1f", settings.min_n, settings.max_n, settings.avg_n);
+        ImGui::Text("density: min:%.4f  max: %.4f  avg: %.4f", settings.min_density, settings.max_density, settings.avg_density);
+        ImGui::Text("near density: min:%.4f  max: %.4f  avg: %.4f", settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
         ImGui::EndDisabled();
         ImGui::TreePop();
     }
 
     // ── Density ──────────────────────────────────────────────────────────────
     Sec("Density");
-    ImGui::DragFloat("Rest rho##fl", &settings.rest_density, 0.01f, 0.f, 10000.f, "%.2f"); SYNC;
+    ImGui::DragFloat("Rest rho##fl", &settings.rest_density, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
     ImGui::SetItemTooltip("Target equilibrium density.  Raise to attract particles.  Lower to spread them.");
 
+	ImGui::DragFloat("near rest density##fl", &settings.nearRestDensity, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
+	ImGui::SetItemTooltip("Target equilibrium near-density.  Raise to increase short-range repulsion.  Lower to allow closer clumping.");
     // ── Pressure ─────────────────────────────────────────────────────────────
     Sec("Pressure");
-    ImGui::DragFloat("Stiffness k##fl", &settings.pressure, 1.f, 0.f, 200000.f, "%.0f"); SYNC;
+    ImGui::DragFloat("Stiffness k##fl", &settings.pressure, 10.f, 0.f, 200000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100, increase gradually.");
     ImGui::DragFloat("Near k'##fl", &settings.nearpressure, 1.f, 0.f, 200000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Typically 10-50x k.");
@@ -366,7 +371,7 @@ static void DrawFluidContent()
     
     // ── Viscosity ─────────────────────────────────────────────────────────────
     Sec("Viscosity");
-    ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.01f, 0.f, 200.f, "%.3f"); SYNC;
+    ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.001f, 0.f, 10.0f, "%.4f"); SYNC;
     ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey / thick fluid.");
 
     // ── Forces ───────────────────────────────────────────────────────────────
@@ -377,9 +382,11 @@ static void DrawFluidContent()
     ImGui::SetItemTooltip("Wall bounce coefficient.  0.0 = fully inelastic.  1.0 = perfectly elastic.");
     ImGui::DragFloat("Wall force##fl", &settings.wallrep, 0.1f, 0.f, 10000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Repulsive force magnitude applied near bounding box walls.");
-    ImGui::DragFloat("Wall dist##fl", &settings.walldst, 0.01f, 0.f, 10.f, "%.2f"); SYNC;
+    ImGui::DragFloat("Wall dist##fl", &settings.walldst, 0.01f, 0.0001f, 10.f, "%.2f"); SYNC;
     ImGui::SetItemTooltip("Distance from wall at which repulsion kicks in.");
-
+	ImGui::DragFloat("airdrag##fl", &settings.airdrag, 0.001f, 0.f, 1.f, "%.3f"); SYNC;
+	ImGui::SetItemTooltip("Dampening factor applied to velocity each step.  Simulates air resistance.  0 = no drag.  0.1 = mild drag.  0.5 = heavy drag.");
+	ImGui::DragFloat("cellsize##fl", &settings.cellSize, 0.01f, 0.01f, 4.f, "%.2f"); SYNC;
 	
 
     // ── Pipeline toggles ──────────────────────────────────────────────────────
@@ -463,18 +470,18 @@ static void DrawWorldContent()
     {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+X##wd", &settings.maxX, 1.f, 0.f, 2000.f, "%.0f");
+        bchg |= ImGui::DragFloat("+X##wd", &settings.maxX, 1.f, 1.f, 2000.f, "%.0f");
         ImGui::SetItemTooltip("Right wall X.  Drag left to shrink.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-X##wd", &settings.minX, 1.f, -2000.f, 0.f, "%.0f");
+        bchg |= ImGui::DragFloat("-X##wd", &settings.minX, 1.f, -2000.f, -1.f, "%.0f");
         ImGui::SetItemTooltip("Left wall X.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+Y##wd", &settings.maxY, 1.f, 0.f, 2000.f, "%.0f");
+        bchg |= ImGui::DragFloat("+Y##wd", &settings.maxY, 1.f, 1.f, 2000.f, "%.0f");
         ImGui::SetItemTooltip("Ceiling Y.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-Y##wd", &settings.minY, 1.f, -2000.f, 0.f, "%.0f");
+        bchg |= ImGui::DragFloat("-Y##wd", &settings.minY, 1.f, -2000.f, -1.f, "%.0f");
         ImGui::SetItemTooltip("Floor Y.");
 
         ImGui::TableNextRow();
@@ -649,6 +656,8 @@ static void DrawHelpContent()
     {
         StatRow("Space", "pause / resume");
         StatRow("K", "restart simulation");
+
+		StatRow("X", "toggle extra stats (neighbor count, density)");
         ImGui::EndTable();
     }
 
@@ -734,6 +743,15 @@ void ui_init()
 
         sprintf(b, "substeps %d   speed %.2fx", settings.substeps, settings.simspeed);
         dl->AddText(ImVec2(x, y), IM_COL32(120, 120, 118, 148), b); y += lh;
+
+        if(settings.debug) {
+            sprintf(b, "neighbor count  min:%d ,max:%d,avg:%d ",settings.min_n,settings.max_n,settings.avg_n);
+            dl->AddText(ImVec2(x, y), IM_COL32(180, 120, 120, 140), b); y += lh;
+			sprintf(b, "density  min:%.4f ,max:%.4f,avg:%.4f ", settings.min_density, settings.max_density, settings.avg_density);
+			dl->AddText(ImVec2(x, y), IM_COL32(180, 120, 120, 140), b); y += lh;
+			sprintf(b, "near density  min:%.4f ,max:%.4f,avg:%.4f ", settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
+			dl->AddText(ImVec2(x, y), IM_COL32(180, 120, 120, 140), b); y += lh;
+		}
 
         if (!settings.nopause)
             dl->AddText(ImVec2(x, y), IM_COL32(188, 100, 100, 230), "PAUSED  --  Space to resume");
