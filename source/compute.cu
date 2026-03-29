@@ -1,4 +1,4 @@
-﻿#include"compute.h"
+#include"compute.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -133,7 +133,7 @@ extern"C" void initgpu(int count) {
     cudaMalloc(&velocity_sorted, count * sizeof(float4));
 	cudaMalloc(&ncount, count * sizeof(int));
 	
-   
+    printf("Total particle mem allocated: %.2f MB\n", (count * (5 * sizeof(float4) + sizeof(int))) / (1024.0 * 1024.0));//prints the mem size for total allocation with maxpartiucles buffer
    
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -314,12 +314,7 @@ extern "C" void initDynamicGrid(int maxParticles) {
         HASH_TABLE_SIZE <<= 1;
   //  size_t hashTableBytes = HASH_TABLE_SIZE * sizeof(HashCell);
 
-    printf("\n=== INITIALIZING DYNAMIC GRID ===\n");
-    printf("Hash table size: %d buckets\n", HASH_TABLE_SIZE);
-    printf("Max particles per cell: %d\n", MAX_PARTICLES_PER_CELL);
-   // printf("Memory for hash table: %.2f MB\n", hashTableBytes / (1024.0f * 1024.0f));
-    printf("Max particles: %d\n", maxParticles);
-
+   
 
    // cudaMalloc(&d_hashTable, hashTableBytes);
     cudaMalloc(&d_cellStart, HASH_TABLE_SIZE * sizeof(int));
@@ -337,9 +332,7 @@ extern "C" void initDynamicGrid(int maxParticles) {
     cudaMemset(d_cellStart, -1, HASH_TABLE_SIZE * sizeof(int));
     cudaMemset(d_cellEnd, -1, HASH_TABLE_SIZE * sizeof(int));
 
-    printf("Dynamic grid initialized: %d hash buckets, max %d particles/cell\n",
-        HASH_TABLE_SIZE, MAX_PARTICLES_PER_CELL);
-
+   
     cudaMalloc(&d_particleHash_alt, maxParticles * sizeof(int));
     cudaMalloc(&d_particleIndex_alt, maxParticles * sizeof(int));
 
@@ -351,7 +344,7 @@ extern "C" void initDynamicGrid(int maxParticles) {
         maxParticles);
 
     cudaMalloc(&d_sortTempStorage, sortTempBytes);
-    printf("CUB sort temp buffer: %zu bytes\n", sortTempBytes);
+  
 }
 extern "C" void freeDynamicGrid() {
    // cudaFree(d_hashTable);
@@ -1038,13 +1031,13 @@ __global__ void addparticles(int n, float h,
     
     float maxX, float maxY, float maxz,
     float minX, float minY, float minZ,
-    float4* position, float4* velocity, float4* accelration,int flowcount,int framecount) {
+    float4* position, float4* velocity, float4* accelration,int flowcount,int framecount,float spacing) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (i >= flowcount) return;
     int k = n + i;
     float x, y, z;
-    float particle_spacing = h * 1.001f;
+    float particle_spacing = h * spacing;
     int nx = (int)ceilf(sqrtf((float)flowcount));
     int ix = i % nx;
     int iy = i / nx;
@@ -1054,7 +1047,7 @@ __global__ void addparticles(int n, float h,
 
     x = (maxX + minX) * 0.5f - gridSizeX * 0.5f + ix * particle_spacing;
     y = (maxY + minY) * 0.5f - gridSizeY * 0.5f + iy * particle_spacing;
-    z = maxz - particle_spacing * 2.0f;
+    z = maxz - particle_spacing ;
 
     position[k].x = x;
     position[k].y = y;
@@ -1257,7 +1250,7 @@ extern "C" void computephysics(float dt) {
             if (frametime >= 0.005f   ) {
                 addparticles << <blocks, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass,
                     settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
-                    positions, velocity, accelration, settings.flowcount,framecount);
+                    positions, velocity, accelration, settings.flowcount,framecount,settings.spacing);
             settings.samplecount += settings.flowcount;
 				frametime = 0;
             }

@@ -158,8 +158,10 @@ void main(){
     float sig2=uBlurSigma*uBlurSigma, sum=0.0, wsum=0.0;
     for(int i=-RADIUS;i<=RADIUS;++i){
         vec2  off = uBlurDir*float(i)*uTexelSize;
-        float d   = texture(uDepthTex,vUV+off).r;
-        if(d < 0.001) continue;
+        float raw = texture(uDepthTex,vUV+off).r;
+        // Sparse splats: treat empty taps as local fluid depth so spatial Gaussian
+        // still accumulates (otherwise holes zero-out weights and blur barely runs).
+        float d = (raw < 0.001) ? center : raw;
         float wSp = exp(-float(i*i)/(2.0*sig2));
         float wDp = exp(-abs(d-center)*uBlurDepthFall);
         float w   = wSp*wDp;

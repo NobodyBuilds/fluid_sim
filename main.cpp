@@ -1,4 +1,4 @@
-﻿#include <glad/glad.h>
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include <glm/glm.hpp>
@@ -448,7 +448,7 @@ void calcKernels() {
    settings.ndensity = settings.spikycoef * h3;//near self density at r=0
    settings.spikygradv = -45 / (settings.pi * h6);
    settings.viscosity = 45 / (settings.pi * h6);
-    
+   settings.h2 = settings.h * settings.h;
 }
 
 

@@ -1,4 +1,4 @@
-﻿// ui.cpp  —  reworked
+// ui.cpp  —  reworked
 //  Changes from original:
 //   • syncsettings = true wired up after every widget that touches a settings field.
 //     syncSettings() is called once per frame at the end (batched, not per-widget).
@@ -309,7 +309,7 @@ static void DrawQuickContent()
 
     ImGui::DragFloat("Viscosity##q", &settings.visc, 0.01f, 0.0f, 200.f, "%.3f"); SYNC;
     ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey.");
-
+  
     // ── Toggles ──────────────────────────────────────────────────────────────
     Sec("Toggles");
     ImGui::Checkbox("SPH forces##q", &settings.colisionFun); SYNC;
@@ -373,7 +373,7 @@ static void DrawFluidContent()
     Sec("Viscosity");
     ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.001f, 0.f, 10.0f, "%.4f"); SYNC;
     ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey / thick fluid.");
-
+  
     // ── Forces ───────────────────────────────────────────────────────────────
     Sec("Forces");
     ImGui::SliderFloat("Gravity##fl", &settings.gravityforce, 0.f, 1000.f, "%.0f"); SYNC;
@@ -446,7 +446,8 @@ static void DrawParticlesContent()
         ImGui::InputInt("Flow##ptem", &settings.flowcount); SYNC;
         ImGui::SetItemTooltip("Particles injected per frame.  Keep low (1-20) to avoid sudden buffer overflow.");
         ImGui::TextDisabled("emitted  %d", settings.samplecount);
-
+		ImGui::SetItemTooltip("Total particles emitted since start or last restart.");
+		ImGui::DragFloat("spacing##ptem", &settings.spacing, 0.01f, 0.01f, 10.f, "%.2f"); SYNC;
     }
   
 

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 struct param {
 	// === FLOAT VARIABLES (4 bytes each) ===
 	// Grouped for cache locality and alignment
@@ -7,14 +7,14 @@ struct param {
 	float size = 1.0f;
 	float particleMass = 1.0f;
 	float cold = 4.500f;
-	
+	float spacing = 1.01f;
 	float heatMultiplier = 15.0f;
 	float h = 3.50f;
 	float h2 = h * h;
-	float rest_density = 0.13f;
-	float pressure = 8500.0f;
-	float nearpressure = 1000.0f;
-	float visc = 0.070f;
+	float rest_density = 0.1036f;
+	float pressure = 10000.0f;
+	float nearpressure = 75000.0f;
+	float visc = 0.055f;
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
@@ -29,12 +29,12 @@ struct param {
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
 	float cellSize = 1.0f;
-	float nearRestDensity =  0.150f;
+	float nearRestDensity = 0.153f;
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
 	float viscosity = 0.0f;
-	float airdrag = 1.0f;
+	float airdrag = 0.35f;
 	float wx = 0.0f;
 	float wy = 0.0f;
 	float wz = 0.0f;
@@ -45,24 +45,21 @@ struct param {
 	float accumulator = 0.0f;
 	float fps = 0.0f;
 	float walldst = 0.90f;
-	float wallrep = 50.0f;
+	float wallrep = 58.0f;
 	
 	// ── Rendering ────────────────────────────────────────────────────────────
 	float bgColorR = 0.11373f, bgColorG = 0.11373f, bgColorB = 0.11373f;
 
-	// Water body colours (screen-space mode)
-	float shallowColorR = 0.0f, shallowColorG = 0.34117f, shallowColorB = 0.68235f;
-	float deepColorR = 0.01176f, deepColorG = 0.047058f, deepColorB = 0.25098f;
-	float absorption = 4.30f;     // Beer-Lambert coefficient
+	float shallowColorR = 0.28f, shallowColorG = 0.62f, shallowColorB = 0.92f;
+	float deepColorR = 0.02f, deepColorG = 0.10f, deepColorB = 0.38f;
+	float absorption = 4.35f;
 
-	// Blur settings (screen-space mode)
-	float blurSigma = 14.0f;     // Gaussian sigma in pixels (radius fixed at 8)
-	float blurDepthFall = 2.0f;    // Bilateral depth-edge sharpness
+	float blurSigma = 14.0f;
+	float blurDepthFall = 5.5f;
 
-	// Sky environment for reflection (screen-space mode)
-	float skyZenithR = 1.0f, skyZenithG = 1.0f, skyZenithB = 1.0f;
-	float skyHorizonR = 0.17254f, skyHorizonG = 0.411764f, skyHorizonB = 0.6117647f;
-	float reflStrength = 0.70f;
+	float skyZenithR = 0.42f, skyZenithG = 0.62f, skyZenithB = 0.95f;
+	float skyHorizonR = 0.58f, skyHorizonG = 0.72f, skyHorizonB = 0.88f;
+	float reflStrength = 0.72f;
 
 	float maxframetime = 16.67;
 
@@ -75,11 +72,10 @@ struct param {
 	int maxparticles = totalBodies * 5;
 	int count = totalBodies;
 	int min_n, max_n, avg_n = 0;
-	int star = 0;
 	
 	int samplecount = totalBodies;
 	int flowcount = 10;
-	int substeps = 1;
+	int substeps = 2;
 	int fpsCount = 0;
 	int pressureMode = 0;
 	int shaderType = 1;
