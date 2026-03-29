@@ -529,7 +529,6 @@ static void DrawRenderContent()
         ImGui::SetItemTooltip(
             "0 = Screen-space fluid surface with sky reflection,\n"
             "    Beer-Lambert absorption, two-lobe specular.\n"
-            "    Heat effect invisible (under fluid surface).\n\n"
             "1 = Classic lit sphere particles.\n"
             "    Heat colour effect available.\n"
             "    Much faster — use for high particle counts.");
@@ -571,6 +570,19 @@ static void DrawRenderContent()
             "Bilateral depth-edge sharpness.\n"
             "Low = blurs freely across depth boundaries.\n"
             "High = hard surface edges.  Good range: 15-30.");
+
+        ImGui::DragFloat("gauss sigma", &settings.gaussSigma , 0.1f, 0.1f, 20.0f); SYNC;
+        ImGui::SetItemTooltip(
+            "Gaussian σ — higher = smoother but slower");
+		ImGui::DragInt("gauss radius", &settings.gaussRadius, 1, 1, 128); SYNC;
+		ImGui::DragInt("gauss iterations", &settings.gaussIterations, 1, 1, 50); SYNC;
+		ImGui::ColorEdit3("sky ground##rn", &settings.skyGroundR); SYNC;
+		ImGui::DragFloat("sun intensity##rn", &settings.sunIntensity, 0.1f, 0.f, 500.f, "%.1f"); SYNC;
+		ImGui::DragFloat("suninv size##rn", &settings.sunInvSize, 1.0f, 1.0f, 2000.0f, "%.3f"); SYNC;
+		ImGui::ColorEdit3(" extinction r##rn", &settings.extinctionR); SYNC;
+		ImGui::DragFloat(" boundsizeX##rn", &settings.boundsSizeX, 1.0f, 0.1f, 1000.f, "%.1f"); SYNC;
+		ImGui::DragFloat(" boundsizeY##rn", &settings.boundsSizeY, 1.0f, 0.1f, 1000.f, "%.1f"); SYNC;
+		ImGui::DragFloat(" boundsizeZ##rn", &settings.boundsSizeZ, 1.0f, 0.1f, 1000.f, "%.1f"); SYNC;
     }
 
     // ── Background — always visible ────────────────────────────────────────────

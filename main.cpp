@@ -382,10 +382,7 @@ void updatePhysics(float dt) {
    
         computephysics(dt);
     
-    if (settings.addParticle == true) {
-        settings.totalBodies = settings.samplecount;
-        settings.count = settings.samplecount;
-    }
+   
 }
 void initBoundingBox() {
 

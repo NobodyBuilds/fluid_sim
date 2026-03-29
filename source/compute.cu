@@ -1252,6 +1252,8 @@ extern "C" void computephysics(float dt) {
                     settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
                     positions, velocity, accelration, settings.flowcount,framecount,settings.spacing);
             settings.samplecount += settings.flowcount;
+            settings.totalBodies += settings.flowcount;
+            settings.count = settings.totalBodies;
 				frametime = 0;
             }
 
