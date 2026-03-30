@@ -18,12 +18,12 @@ struct param {
 	float gravityforce = 150.8f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
-	float minX = -50.0f;
-	float maxX = 200.0f;
+	float minX = -125.0f;
+	float maxX = 125.0f;
 	float minY = -50.0f;
 	float maxY = 50.0f;
-	float minZ = 0.0f;
-	float maxz = 100.0f;
+	float minZ = -50.0f;
+	float maxz = 50.0f;
 	float restitution = 0.8f;
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
@@ -68,6 +68,10 @@ struct param {
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
 	float extinctionR = 0.45f, extinctionG = 0.18f, extinctionB = 0.08f;
+	float mx = 50.0f, my = 50.0f, mz = 25.0f;
+	float nx = -50.0f, ny = -50.0f, nz = -25.0f;
+
+	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
 	double fuc_ms = 0.0;
 	// === INT VARIABLES (4 bytes each) ===
 	int totalBodies = 30000;
@@ -85,14 +89,13 @@ struct param {
 	int samplen = 1;
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding
-	bool colisionFun = true;
+	bool sph = true;
 	
 	bool nopause = true;
 	bool heateffect = true;
 	bool addParticle = false;
 	bool boundingBox = true;
 	bool debug = false;
-	
 	bool recordSim = false;
 };
 extern param settings;

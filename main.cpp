@@ -25,6 +25,8 @@
 #include"fluid_sim/settings.h"
 #include"source/compute.h"
 #include "fluid_sim/main.h"
+
+#include "fluid_sim/buttons.h"
 #define _USE_MATH_DEFINES
 
 
@@ -338,28 +340,7 @@ inline void worldToScreen_topLeft(float wx, float wy, float& sx, float& sy, cons
 }
 
 
-
-
-//ui////////////
-//functions
-
-
-
-
-
-
-//particle settings
-
-
-
-//camera
 float y, p;
-
-//heat
-
-//arrays 
-
-
 
 
 void restartSimulation() {
@@ -371,10 +352,11 @@ void restartSimulation() {
     initgpu(settings.maxparticles);
 	initDynamicGrid(settings.maxparticles);
     registerBodies();
+    settings.nopause = false;
   
     
 
-    }
+}
 
 void updatePhysics(float dt) {
     if (settings.fuc_ms > settings.maxframetime )settings.addParticle = false;
@@ -407,7 +389,25 @@ void initBoundingBox() {
         settings.minX, settings.minY, settings.minZ,   settings.minX, settings.minY, settings.maxz,
         settings.maxX, settings.minY, settings.minZ,   settings.maxX, settings.minY, settings.maxz,
         settings.maxX, settings.maxY, settings.minZ,   settings.maxX, settings.maxY, settings.maxz,
-        settings.minX, settings.maxY, settings.minZ,   settings.minX, settings.maxY, settings.maxz
+        settings.minX, settings.maxY, settings.minZ,   settings.minX, settings.maxY, settings.maxz,
+
+        //mini spawn box verts
+        settings.nx, settings.ny, settings.nz,   settings.mx, settings.ny, settings.nz,
+        settings.mx, settings.ny, settings.nz,   settings.mx, settings.my, settings.nz,
+        settings.mx, settings.my, settings.nz,   settings.nx, settings.my, settings.nz,
+        settings.nx, settings.my, settings.nz,   settings.nx, settings.ny, settings.nz,
+
+        settings.nx, settings.ny, settings.mz,   settings.mx, settings.ny, settings.mz,
+        settings.mx, settings.ny, settings.mz,   settings.mx, settings.my, settings.mz,
+        settings.mx, settings.my, settings.mz,   settings.nx, settings.my, settings.mz,
+        settings.nx, settings.my, settings.mz,   settings.nx, settings.ny, settings.mz,
+
+        settings.nx, settings.ny, settings.nz,   settings.nx, settings.ny, settings.mz,
+        settings.mx, settings.ny, settings.nz,   settings.mx, settings.ny, settings.mz,
+        settings.mx, settings.my, settings.nz,   settings.mx, settings.my, settings.mz,
+        settings.nx, settings.my, settings.nz,   settings.nx, settings.my, settings.mz
+
+		
     };
 
     glGenVertexArrays(1, &bboxVAO);
@@ -490,7 +490,7 @@ void drawAll() {
 
         glBindVertexArray(bboxVAO);
         glLineWidth(1.0f);
-        glDrawArrays(GL_LINES, 0, 24);
+        glDrawArrays(GL_LINES, 0, 48);
         glBindVertexArray(0);
         glUseProgram(0);
     }
@@ -621,49 +621,7 @@ void updateCameraMovement(GLFWwindow* window, float dt) {
 
 
 }
-void buttons(GLFWwindow* window) {
 
-    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
-        restartSimulation();
-    static bool predown = false;
-    bool down = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-    
-    if(down && !predown)
-    {
-        if (settings.nopause == true) {
-            settings.nopause = false;
-        }
-        else if (settings.nopause == false) {
-            settings.nopause = true;
-        }
-    }
-    predown = down;
-
-    static bool f11down = false;
-    bool f11 = glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS;
-    if (f11 && !f11down) {
-        if (glfwGetWindowMonitor(window)) {
-            glfwSetWindowMonitor(window, nullptr, 100, 100, screenWidth, screenHeight, 0);
-        }
-        else {
-            GLFWmonitor* primary = glfwGetPrimaryMonitor();
-            const GLFWvidmode* mode = glfwGetVideoMode(primary);
-            glfwSetWindowMonitor(window, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
-        }
-    }
-    f11down = f11;
-    static bool xdown = false;
-	bool x = glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS;
-    if(x && !xdown)
-    {
-        if (settings.debug == true) {
-            settings.debug = false;
-        }
-        else if (settings.debug == false) {
-            settings.debug = true;
-        }
-	}
-}
 void framebuffer_size_callback(GLFWwindow* w, int width, int height) {
     if (width == 0 || height == 0) return;
     currentWidth = width;
@@ -729,6 +687,8 @@ int main() {
     bloc_uProj = glGetUniformLocation(bboxProgram, "uProj");
     bloc_uView = glGetUniformLocation(bboxProgram, "uView");
     bloc_uColor = glGetUniformLocation(bboxProgram, "uColor");
+
+
 
     calcKernels();
     initBoundingBox();
@@ -797,9 +757,9 @@ int main() {
             while (settings.accumulator >= settings.fixedDt) {
 
 
-                if (settings.nopause == true) {
+              
                     updatePhysics(effectiveDt);
-                }
+                
 
 
 

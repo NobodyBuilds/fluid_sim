@@ -20,6 +20,7 @@
     <ClCompile Include="..\imgui_tables.cpp" />
     <ClCompile Include="..\imgui_widgets.cpp" />
     <ClCompile Include="..\main.cpp" />
+    <ClCompile Include="buttons.cpp" />
     <ClCompile Include="settings.cpp" />
     <ClCompile Include="ui.cpp" />
   </ItemGroup>
@@ -33,6 +34,7 @@
   <ItemGroup>
     <ClInclude Include="..\source\compute.h" />
     <ClInclude Include="..\struct.h" />
+    <ClInclude Include="buttons.h" />
     <ClInclude Include="fluid_renderer.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="settings.h" />

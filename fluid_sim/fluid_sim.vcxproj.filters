@@ -13,6 +13,9 @@
     <Filter Include="settings">
       <UniqueIdentifier>{7fef3366-a7fd-4365-9c6f-47be15481411}</UniqueIdentifier>
     </Filter>
+    <Filter Include="buttons">
+      <UniqueIdentifier>{1a1b5ce9-6b51-4326-9346-afe28947c5d5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\imgui_widgets.cpp">
@@ -46,6 +49,9 @@
     <ClCompile Include="settings.cpp">
       <Filter>settings</Filter>
     </ClCompile>
+    <ClCompile Include="buttons.cpp">
+      <Filter>buttons</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\source\compute.h">
@@ -60,6 +66,9 @@
     </ClInclude>
     <ClInclude Include="main.h" />
     <ClInclude Include="fluid_renderer.h" />
+    <ClInclude Include="buttons.h">
+      <Filter>buttons</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\source\compute.cu">

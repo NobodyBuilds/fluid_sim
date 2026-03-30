@@ -1096,9 +1096,9 @@ __global__ void registerKernel(int n,float h,
     int ny = max(1, (int)roundf(cbrtN * (Ly / scale)));
     int nz = max(1, (int)ceilf((float)n / (nx * ny))); // nz fills remainder
     // Clamp to physical box limits
-    nx = min(nx, max(1, (int)floorf(Lx / particle_spacing) + 1));
-    ny = min(ny, max(1, (int)floorf(Ly / particle_spacing) + 1));
-    nz = min(nz, max(1, (int)floorf(Lz / particle_spacing) + 1));
+    nx = min(nx, max(1, (int)floorf(Lx ) + 1));
+    ny = min(ny, max(1, (int)floorf(Ly ) + 1));
+    nz = min(nz, max(1, (int)floorf(Lz ) + 1));
     // 3D index
     int ix = i % nx;
     int iy = (i / nx) % ny;
@@ -1160,104 +1160,107 @@ extern "C" void computephysics(float dt) {
     if (settings.nopause) {
         for (int i = 0; i < settings.substeps; i++) {
             //update positipons
-            updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce,ncount,settings.airdrag);
-            //acelrations reset
-               
-            if (settings.colisionFun) {
-                //builds grid and sorted arrays with pridicted positions
-                    buildDynamicGrid(settings.count, d_cellsize, positions,deltaTime);
-                
-               
+            
+                updateKernel << < blocks, THREADS >> > (deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce, ncount, settings.airdrag);
+                //acelrations reset
+
+                if (settings.sph) {
+                    //builds grid and sorted arrays with pridicted positions
+                    buildDynamicGrid(settings.count, d_cellsize, positions, deltaTime);
+
+
 
                     //uses p pos for stability
-					computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex,settings.nearpressure,settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
-                    
+                    computeDensity << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
+
                     //reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
-                computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted,velocity,deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz,settings.wallrep,settings.walldst,settings.pressure,settings.particleMass,ncount,settings.ndensity,settings.nearRestDensity);
+                    computePressure << <blocks, THREADS >> > (totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted, velocity, deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.wallrep, settings.walldst, settings.pressure, settings.particleMass, ncount, settings.ndensity, settings.nearRestDensity);
 
-               
+
+                }
+
+
+
+            
+        }
+            //DEBUG INFO not always active
+            static int framecount = 0;
+            ++framecount;
+            if (framecount >= 100 && settings.debug == true) {
+
+                int   izero = 0, ibig = INT_MAX;
+                float fzero = 0.0f, fbig = FLT_MAX, fnbig = -FLT_MAX;
+
+                cudaMemcpyToSymbol(min_nb, &ibig, sizeof(int));
+                cudaMemcpyToSymbol(max_nb, &izero, sizeof(int));
+                cudaMemcpyToSymbol(avg_nb, &izero, sizeof(int));
+
+                cudaMemcpyToSymbol(min_Density, &fbig, sizeof(float));
+                cudaMemcpyToSymbol(max_Density, &fnbig, sizeof(float));
+                cudaMemcpyToSymbol(avg_Density, &fzero, sizeof(float));
+
+                cudaMemcpyToSymbol(min_nearDensity, &fbig, sizeof(float));
+                cudaMemcpyToSymbol(max_nearDensity, &fnbig, sizeof(float));
+                cudaMemcpyToSymbol(avg_nearDensity, &fzero, sizeof(float));
+
+                // run — use sorted arrays, that's where density lives
+                debug << <blocks, THREADS >> > (totalBodies, positions_sorted, velocity_sorted, ncount);
+                cudaDeviceSynchronize();
+
+                // read back
+                int   h_minN, h_maxN, h_sumN;
+                float h_minD, h_maxD, h_sumD;
+                float h_minND, h_maxND, h_sumND;
+
+                cudaMemcpyFromSymbol(&h_minN, min_nb, sizeof(int));
+                cudaMemcpyFromSymbol(&h_maxN, max_nb, sizeof(int));
+                cudaMemcpyFromSymbol(&h_sumN, avg_nb, sizeof(int));
+
+                cudaMemcpyFromSymbol(&h_minD, min_Density, sizeof(float));
+                cudaMemcpyFromSymbol(&h_maxD, max_Density, sizeof(float));
+                cudaMemcpyFromSymbol(&h_sumD, avg_Density, sizeof(float));
+
+                cudaMemcpyFromSymbol(&h_minND, min_nearDensity, sizeof(float));
+                cudaMemcpyFromSymbol(&h_maxND, max_nearDensity, sizeof(float));
+                cudaMemcpyFromSymbol(&h_sumND, avg_nearDensity, sizeof(float));
+
+                // push to settings
+                settings.min_n = h_minN;
+                settings.max_n = h_maxN;
+                settings.avg_n = (float)h_sumN / totalBodies;
+
+                settings.min_density = h_minD;
+                settings.max_density = h_maxD;
+                settings.avg_density = h_sumD / totalBodies;
+
+                settings.min_neardensity = h_minND;
+                settings.max_neardensity = h_maxND;
+                settings.avg_neardensity = h_sumND / totalBodies;
+
+                framecount = 0;
             }
+            //   cudaMemcpy(&settings.samplen, ncount+2, sizeof(int), cudaMemcpyDeviceToHost);
 
+               //emiter
+               //frametime for stability
+               //prevents buffer overlow when particles reach 98.5% of buffer size or the maxframetime set by user is reached, also prevents adding too many particles at once which causes instability, also adding particles gradually looks better
+            if (settings.addParticle == true) {
+                static float frametime = 0.0f;
+                static int framecount = 0;
+                framecount++;
+                frametime += dt;
+                if (frametime >= 0.005f) {
+                    addparticles << <blocks, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass,
+                        settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
+                        positions, velocity, accelration, settings.flowcount, framecount, settings.spacing);
+                    settings.samplecount += settings.flowcount;
+                    settings.totalBodies += settings.flowcount;
+                    settings.count = settings.totalBodies;
+                    frametime = 0;
+                }
 
-
-        }
-        //DEBUG INFO not always active
-		static int framecount = 0;
-		++framecount;
-        if (framecount >= 100 && settings.debug == true) {
-
-            int   izero = 0, ibig = INT_MAX;
-            float fzero = 0.0f, fbig = FLT_MAX, fnbig = -FLT_MAX;
-
-            cudaMemcpyToSymbol(min_nb, &ibig, sizeof(int));
-            cudaMemcpyToSymbol(max_nb, &izero, sizeof(int));
-            cudaMemcpyToSymbol(avg_nb, &izero, sizeof(int));
-
-            cudaMemcpyToSymbol(min_Density, &fbig, sizeof(float));
-            cudaMemcpyToSymbol(max_Density, &fnbig, sizeof(float));
-            cudaMemcpyToSymbol(avg_Density, &fzero, sizeof(float));
-
-            cudaMemcpyToSymbol(min_nearDensity, &fbig, sizeof(float));
-            cudaMemcpyToSymbol(max_nearDensity, &fnbig, sizeof(float));
-            cudaMemcpyToSymbol(avg_nearDensity, &fzero, sizeof(float));
-
-            // run — use sorted arrays, that's where density lives
-            debug << <blocks, THREADS >> > (totalBodies, positions_sorted, velocity_sorted, ncount);
-            cudaDeviceSynchronize();
-
-            // read back
-            int   h_minN, h_maxN, h_sumN;
-            float h_minD, h_maxD, h_sumD;
-            float h_minND, h_maxND, h_sumND;
-
-            cudaMemcpyFromSymbol(&h_minN, min_nb, sizeof(int));
-            cudaMemcpyFromSymbol(&h_maxN, max_nb, sizeof(int));
-            cudaMemcpyFromSymbol(&h_sumN, avg_nb, sizeof(int));
-
-            cudaMemcpyFromSymbol(&h_minD, min_Density, sizeof(float));
-            cudaMemcpyFromSymbol(&h_maxD, max_Density, sizeof(float));
-            cudaMemcpyFromSymbol(&h_sumD, avg_Density, sizeof(float));
-
-            cudaMemcpyFromSymbol(&h_minND, min_nearDensity, sizeof(float));
-            cudaMemcpyFromSymbol(&h_maxND, max_nearDensity, sizeof(float));
-            cudaMemcpyFromSymbol(&h_sumND, avg_nearDensity, sizeof(float));
-
-            // push to settings
-            settings.min_n = h_minN;
-            settings.max_n = h_maxN;
-            settings.avg_n = (float)h_sumN / totalBodies;
-
-            settings.min_density = h_minD;
-            settings.max_density = h_maxD;
-            settings.avg_density = h_sumD / totalBodies;
-
-            settings.min_neardensity = h_minND;
-            settings.max_neardensity = h_maxND;
-            settings.avg_neardensity = h_sumND / totalBodies;
-
-			framecount = 0;
-        }
-     //   cudaMemcpy(&settings.samplen, ncount+2, sizeof(int), cudaMemcpyDeviceToHost);
-
-        //emiter
-        //frametime for stability
-		//prevents buffer overlow when particles reach 98.5% of buffer size or the maxframetime set by user is reached, also prevents adding too many particles at once which causes instability, also adding particles gradually looks better
-        if (settings.addParticle == true) {
-			static float frametime = 0.0f;
-			static int framecount = 0;
-            framecount++;
-            frametime += dt;
-            if (frametime >= 0.005f   ) {
-                addparticles << <blocks, THREADS >> > (settings.count, settings.h, settings.size, settings.particleMass,
-                    settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
-                    positions, velocity, accelration, settings.flowcount,framecount,settings.spacing);
-            settings.samplecount += settings.flowcount;
-            settings.totalBodies += settings.flowcount;
-            settings.count = settings.totalBodies;
-				frametime = 0;
             }
-
-        }
+        
 
     }
 

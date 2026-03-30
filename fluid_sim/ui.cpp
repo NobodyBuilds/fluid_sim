@@ -27,7 +27,7 @@
 //  ui_init() calls syncSettings() at end of frame if true, then clears it.
 // ─────────────────────────────────────────────────────────────────────────────
 bool syncsettings = false;
-
+bool bchg = false;
 // SYNC — drop this after any ImGui widget that writes to settings.
 // Uses IsItemEdited() so it fires on every drag/key frame, not just on release.
 #define SYNC do { if (ImGui::IsItemEdited()) syncsettings = true; } while(0)
@@ -312,7 +312,7 @@ static void DrawQuickContent()
   
     // ── Toggles ──────────────────────────────────────────────────────────────
     Sec("Toggles");
-    ImGui::Checkbox("SPH forces##q", &settings.colisionFun); SYNC;
+    ImGui::Checkbox("SPH forces##q", &settings.sph); SYNC;
     ImGui::SetItemTooltip("Enable density + pressure force kernels.");
     ImGui::SameLine(140);
     ImGui::Checkbox("Heat colour##q", &settings.heateffect);  SYNC;
@@ -391,13 +391,14 @@ static void DrawFluidContent()
 
     // ── Pipeline toggles ──────────────────────────────────────────────────────
     Sec("Pipeline");
-    ImGui::Checkbox("SPH forces##fl", &settings.colisionFun); SYNC;
+    ImGui::Checkbox("SPH forces##fl", &settings.sph); SYNC;
     ImGui::SetItemTooltip("Master toggle for density + pressure force kernels.\nDisable to watch purely gravity-driven motion.");
 }
 
 // ─── PARTICLES ───────────────────────────────────────────────────────────────
 static void DrawParticlesContent()
 {
+    bool initbox = false;
     // ── Spawn ─────────────────────────────────────────────────────────────────
     Sec("Spawn");
     ImGui::InputInt("Count##pt", &settings.totalBodies);
@@ -408,8 +409,46 @@ static void DrawParticlesContent()
     if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
     ImGui::SetItemTooltip("GPU allocation size in particles.  Must be >= Count.  Increase before using the emitter.");
    
-
-    FillBar(5.f);
+    if(ImGui::DragFloat("spawn grid x", &settings.mx, 0.5f, 1.0f, settings.maxX)) {
+        settings.nx = -settings.mx;
+        if (settings.nx < settings.minX) settings.nx = settings.minX;
+		initbox = true;
+    }
+    if(ImGui::DragFloat("spawn grid y", &settings.my, 0.5f, 1.0f, settings.maxY)) {
+        settings.ny = -settings.my;
+        if (settings.ny < settings.minY) settings.ny = settings.minY;
+        initbox = true;
+    }
+    if(ImGui::DragFloat("spawn grid z", &settings.mz, 0.5f, 1.0f, settings.maxz)) {
+        settings.nz = -settings.mz;
+        if (settings.nz < settings.minZ) settings.nz = settings.minZ;
+        initbox = true;
+    }
+   
+   
+    if(ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
+        float delta = settings.movex;
+        settings.mx += delta;
+        settings.nx +=delta;
+        settings.movex = 0.0f;
+        initbox = true;
+    }
+	if(ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
+        float delta = settings.movey;
+        settings.my +=delta;
+        settings.ny +=delta;
+        settings.movey = 0.0f;
+        initbox = true;
+    }
+	if(ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
+        float delta = settings.movez;
+        settings.mz += delta;
+        settings.nz += delta;
+        settings.movez = 0.0f;
+        initbox = true;
+    }
+	if (initbox) { initBoundingBox(); initbox = false; }
+   FillBar(5.f);
 
     ImGui::Spacing();
     ImGui::InputFloat("Radius##pt", &settings.size, 0.05f, 0.2f, "%.3f");
@@ -466,7 +505,7 @@ static void DrawWorldContent()
     ImGui::TextDisabled("Drag — updates in real time.");
     ImGui::Spacing();
 
-    bool bchg = false;
+   
     if (ImGui::BeginTable("##wdbb", 2, ImGuiTableFlags_SizingStretchSame))
     {
         ImGui::TableNextRow();
@@ -821,7 +860,7 @@ void ui_init()
             Badge(" EMIT ", ImVec4(0.18f, 0.32f, 0.44f, 1));
             ImGui::SameLine();
         }
-        if (!settings.colisionFun) {
+        if (!settings.sph) {
             bx -= 74; ImGui::SetCursorPosX(bx);
             Badge(" SPH OFF ", ImVec4(0.38f, 0.30f, 0.10f, 1));
             ImGui::SameLine();
