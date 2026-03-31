@@ -60,11 +60,8 @@ struct param {
 	float boundsSizeX = 5.0f, boundsSizeY = 5.0f, boundsSizeZ = 5.0f;
 	float skyZenithR = 0.42f, skyZenithG = 0.62f, skyZenithB = 0.95f;
 	float skyHorizonR = 0.58f, skyHorizonG = 0.72f, skyHorizonB = 0.88f;
-	float skyGroundR = 0.186f, skyGroundG = 0.159f, skyGroundB = 0.186f;
 	float reflStrength = 0.72f;
-	float sunIntensity = 8.0f;
 	float maxframetime = 16.67;
-	float sunInvSize = 200.0f;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
 	float extinctionR = 0.45f, extinctionG = 0.18f, extinctionB = 0.08f;
@@ -78,8 +75,6 @@ struct param {
 	int maxparticles = totalBodies * 5;
 	int count = totalBodies;
 	int min_n, max_n, avg_n = 0;
-	int   gaussIterations = 2;
-	int   gaussRadius = 8;
 	int samplecount = totalBodies;
 	int flowcount = 10;
 	int substeps = 2;

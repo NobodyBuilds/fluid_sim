@@ -634,29 +634,18 @@ static void DrawRenderContent()
             "1.0 = physically correct.   >1.0 = exaggerated bright sky.   0.0 = no sky reflection.");
 
         Sec("Surface Blur");
-        ImGui::SliderFloat("Sigma (px)##rnbs", &settings.blurSigma, 1.0f, 14.0f, "%.1f"); SYNC;
+        ImGui::SliderFloat("Sigma (px)##rnbs", &settings.blurSigma, 1.0f, 1000.0f, "%.1f"); SYNC;
         ImGui::SetItemTooltip(
             "Gaussian sigma in pixels for bilateral blur.\n"
             "Higher = particles merge into a smoother surface.\n"
             "Lower = individual particles more distinct.  2 H+V iterations, radius 8.");
-        ImGui::SliderFloat("Edge hold##rnbd", &settings.blurDepthFall, 2.0f, 60.0f, "%.1f"); SYNC;
+        ImGui::SliderFloat("Edge hold##rnbd", &settings.blurDepthFall, 2.0f, 600.0f, "%.1f"); SYNC;
         ImGui::SetItemTooltip(
             "Bilateral depth-edge sharpness.\n"
             "Low = blurs freely across depth boundaries.\n"
             "High = hard surface edges.  Good range: 15-30.");
 
-        ImGui::DragFloat("gauss sigma", &settings.gaussSigma , 0.1f, 0.1f, 20.0f); SYNC;
-        ImGui::SetItemTooltip(
-            "Gaussian σ — higher = smoother but slower");
-		ImGui::DragInt("gauss radius", &settings.gaussRadius, 1, 1, 128); SYNC;
-		ImGui::DragInt("gauss iterations", &settings.gaussIterations, 1, 1, 50); SYNC;
-		ImGui::ColorEdit3("sky ground##rn", &settings.skyGroundR); SYNC;
-		ImGui::DragFloat("sun intensity##rn", &settings.sunIntensity, 0.1f, 0.f, 500.f, "%.1f"); SYNC;
-		ImGui::DragFloat("suninv size##rn", &settings.sunInvSize, 1.0f, 1.0f, 2000.0f, "%.3f"); SYNC;
-		ImGui::ColorEdit3(" extinction r##rn", &settings.extinctionR); SYNC;
-		ImGui::DragFloat(" boundsizeX##rn", &settings.boundsSizeX, 1.0f, 0.1f, 1000.f, "%.1f"); SYNC;
-		ImGui::DragFloat(" boundsizeY##rn", &settings.boundsSizeY, 1.0f, 0.1f, 1000.f, "%.1f"); SYNC;
-		ImGui::DragFloat(" boundsizeZ##rn", &settings.boundsSizeZ, 1.0f, 0.1f, 1000.f, "%.1f"); SYNC;
+    
     }
 
     // ── Background — always visible ────────────────────────────────────────────

@@ -480,7 +480,7 @@ void drawAll() {
     glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 0.6f, 1.0f));
     float aspect = (float)currentWidth / (float)screenHeight;
 
-   
+ 
     if (settings.boundingBox) {
         // ── bounding box pass ────────────────────────────────────────────────────
         glUseProgram(bboxProgram);
@@ -502,6 +502,9 @@ void drawAll() {
         glUseProgram(0);
     }
     
+
+
+
     
       bool rendered=  fluidRenderer.render(vao, settings.count,
             proj, viewMat,
@@ -661,8 +664,8 @@ int main() {
         std::cerr << "Failed to init GLAD\n"; return -1;
     }
     glEnable(GL_BLEND);
-    //glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+   // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     glViewport(0, 0, screenWidth, screenHeight);
 
