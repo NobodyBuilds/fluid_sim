@@ -399,6 +399,7 @@ static void DrawFluidContent()
 static void DrawParticlesContent()
 {
     bool initbox = false;
+    
     // ── Spawn ─────────────────────────────────────────────────────────────────
     Sec("Spawn");
     ImGui::InputInt("Count##pt", &settings.totalBodies);
@@ -409,32 +410,64 @@ static void DrawParticlesContent()
     if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
     ImGui::SetItemTooltip("GPU allocation size in particles.  Must be >= Count.  Increase before using the emitter.");
    
-    if(ImGui::DragFloat("spawn grid x", &settings.mx, 0.5f, 1.0f, settings.maxX)) {
-        settings.nx = -settings.mx;
+    if(ImGui::DragFloat("spawn grid x", &settings.expandx, 0.5f, settings.minX, settings.maxX)) {
+      
+            float change = settings.expandx;
+            settings.mx += change;
+            settings.nx -= change;
+            settings.expandx = 0.0f;
         if (settings.nx < settings.minX) settings.nx = settings.minX;
+		if (settings.mx > settings.maxX) settings.mx = settings.maxX;
+        if(settings.mx - settings.nx < 5.0f) {
+            settings.mx +=10.0f;
+			settings.nx -= 10.0f;
+		}
 		initbox = true;
     }
-    if(ImGui::DragFloat("spawn grid y", &settings.my, 0.5f, 1.0f, settings.maxY)) {
-        settings.ny = -settings.my;
+	
+    if(ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f, settings.minY, settings.maxY)) {
+		float change = settings.expandy;
+        settings.ny -= change;
+        settings.my += change;
+		settings.expandy = 0.0f;
         if (settings.ny < settings.minY) settings.ny = settings.minY;
+		if (settings.my > settings.maxY) settings.my = settings.maxY;
+        if (settings.my - settings.ny < 5.0f) {
+            settings.my += 10.0f;
+            settings.ny -= 10.0f;
+        }
         initbox = true;
     }
-    if(ImGui::DragFloat("spawn grid z", &settings.mz, 0.5f, 1.0f, settings.maxz)) {
-        settings.nz = -settings.mz;
+
+    if(ImGui::DragFloat("spawn grid z", &settings.expandz, 0.5f, settings.minZ, settings.maxz)) {
+		float change = settings.expandz;
+        settings.nz -= change;
+        settings.mz += change;
+		settings.expandz = 0.0f;
         if (settings.nz < settings.minZ) settings.nz = settings.minZ;
+		if (settings.mz > settings.maxz) settings.mz = settings.maxz;
+        if (settings.mz - settings.nz < 5.0f) {
+            settings.mz += 10.0f;
+            settings.nz -= 10.0f;
+        }
         initbox = true;
     }
    
    
     if(ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
         float delta = settings.movex;
+		if (settings.mx >= settings.maxX && delta > 0.0f) delta = 0.0f;
+		if (settings.nx <= settings.minX && delta < 0.0f) delta = 0.0f;
         settings.mx += delta;
-        settings.nx +=delta;
+        settings.nx += delta;
         settings.movex = 0.0f;
         initbox = true;
+        
     }
 	if(ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
         float delta = settings.movey;
+        if (settings.my >= settings.maxY && delta > 0.0f) delta = 0.0f;
+        if (settings.ny <= settings.minY && delta < 0.0f) delta = 0.0f;
         settings.my +=delta;
         settings.ny +=delta;
         settings.movey = 0.0f;
@@ -442,12 +475,14 @@ static void DrawParticlesContent()
     }
 	if(ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
         float delta = settings.movez;
+        if (settings.mz >= settings.maxz && delta > 0.0f) delta = 0.0f;
+        if (settings.nz <= settings.minZ && delta < 0.0f) delta = 0.0f;
         settings.mz += delta;
         settings.nz += delta;
         settings.movez = 0.0f;
         initbox = true;
     }
-	if (initbox) { initBoundingBox(); initbox = false; }
+    if (initbox) { initBoundingBox(); restartSimulation(); initbox = false; }
    FillBar(5.f);
 
     ImGui::Spacing();
@@ -510,26 +545,26 @@ static void DrawWorldContent()
     {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+X##wd", &settings.maxX, 1.f, 1.f, 2000.f, "%.0f");
+        bchg |= ImGui::DragFloat("+X##wd", &settings.maxX, 0.5f, 1.f, 2000.f, "%.0f");
         ImGui::SetItemTooltip("Right wall X.  Drag left to shrink.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-X##wd", &settings.minX, 1.f, -2000.f, -1.f, "%.0f");
+        bchg |= ImGui::DragFloat("-X##wd", &settings.minX, 0.5f, -2000.f, -1.f, "%.0f");
         ImGui::SetItemTooltip("Left wall X.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+Y##wd", &settings.maxY, 1.f, 1.f, 2000.f, "%.0f");
+        bchg |= ImGui::DragFloat("+Y##wd", &settings.maxY, 0.5f, 1.f, 2000.f, "%.0f");
         ImGui::SetItemTooltip("Ceiling Y.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-Y##wd", &settings.minY, 1.f, -2000.f, -1.f, "%.0f");
+        bchg |= ImGui::DragFloat("-Y##wd", &settings.minY, 0.5f, -2000.f, -1.f, "%.0f");
         ImGui::SetItemTooltip("Floor Y.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+Z##wd", &settings.maxz, 1.f, 0.f, 2000.f, "%.0f");
+        bchg |= ImGui::DragFloat("+Z##wd", &settings.maxz, 0.5f, 0.f, 2000.f, "%.0f");
         ImGui::SetItemTooltip("Back wall Z.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-Z##wd", &settings.minZ, 1.f, -2000.f, 0.f, "%.0f");
+        bchg |= ImGui::DragFloat("-Z##wd", &settings.minZ, 0.5f, -2000.f, 0.f, "%.0f");
         ImGui::SetItemTooltip("Front wall Z.");
 
         ImGui::EndTable();

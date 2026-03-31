@@ -70,7 +70,7 @@ struct param {
 	float extinctionR = 0.45f, extinctionG = 0.18f, extinctionB = 0.08f;
 	float mx = 50.0f, my = 50.0f, mz = 25.0f;
 	float nx = -50.0f, ny = -50.0f, nz = -25.0f;
-
+	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
 	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
 	double fuc_ms = 0.0;
 	// === INT VARIABLES (4 bytes each) ===

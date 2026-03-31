@@ -1140,7 +1140,7 @@ __global__ void registerKernel(int n,float h,
 }
 extern "C" void registerBodies() {
     int Block = (settings.count + THREADS - 1) / THREADS;
-    registerKernel << < Block, THREADS >> > (settings.count, settings.h, settings.maxX, settings.maxY, settings.maxz, settings.minX, settings.minY, settings.minZ,
+    registerKernel << < Block, THREADS >> > (settings.count, settings.h, settings.mx, settings.my, settings.mz, settings.nx, settings.ny, settings.nz,
                                                  positions,velocity,accelration);  
 }
 

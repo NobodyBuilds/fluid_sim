@@ -490,7 +490,14 @@ void drawAll() {
 
         glBindVertexArray(bboxVAO);
         glLineWidth(1.0f);
-        glDrawArrays(GL_LINES, 0, 48);
+        if (settings.nopause) {
+
+        glDrawArrays(GL_LINES, 0, 24);
+        }
+        else {
+            glDrawArrays(GL_LINES, 0, 48);
+        }
+
         glBindVertexArray(0);
         glUseProgram(0);
     }
