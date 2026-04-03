@@ -16,6 +16,9 @@
     <Filter Include="buttons">
       <UniqueIdentifier>{1a1b5ce9-6b51-4326-9346-afe28947c5d5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="floor">
+      <UniqueIdentifier>{325abdf0-8e2d-4a79-a559-ecd36e18f2e1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\imgui_widgets.cpp">
@@ -52,6 +55,9 @@
     <ClCompile Include="buttons.cpp">
       <Filter>buttons</Filter>
     </ClCompile>
+    <ClCompile Include="floor_render.cpp">
+      <Filter>floor</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\source\compute.h">
@@ -68,6 +74,9 @@
     <ClInclude Include="fluid_renderer.h" />
     <ClInclude Include="buttons.h">
       <Filter>buttons</Filter>
+    </ClInclude>
+    <ClInclude Include="floor.h">
+      <Filter>floor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

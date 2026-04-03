@@ -46,6 +46,18 @@ struct param {
 	float fps = 0.0f;
 	float walldst = 0.90f;
 	float wallrep = 58.0f;
+
+	float tilesize = 5.0f;
+	float variationStrength = 0.15f;
+	float color1R = 0.608f, color1G = 0.361f, color1B = 0.851f;
+	float color2R = 0.851f, color2G = 0.361f, color2B = 0.361f;
+	float color3R = 0.3f, color3G = 0.851f, color3B = 0.608f;
+	float color4R = 0.851f, color4G = 0.792f, color4B = 0.361f;
+	float floorbounds = 600.0f;
+	float floorbounx = floorbounds*0.5f;   // +X extent for floor
+	float floorboun_x = -floorbounds*0.5f; // -X extent for floor
+	float floorbouny = floorbounds * 0.5f;   // +Y extent for floor
+	float floorboun_y = -floorbounds * 0.5f; // -Y extent for floor
 	
 	// ── Rendering ────────────────────────────────────────────────────────────
 	float gaussSigma = 4.0f;
@@ -92,5 +104,6 @@ struct param {
 	bool boundingBox = true;
 	bool debug = false;
 	bool recordSim = false;
+	bool spawnstate = true;
 };
 extern param settings;

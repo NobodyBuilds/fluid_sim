@@ -29,6 +29,7 @@ extern "C" void buttons(GLFWwindow* window){
         else if (settings.nopause == false) {
             settings.nopause = true;
         }
+        settings.spawnstate = false;
     }
     predown = down;
 

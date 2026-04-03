@@ -20,6 +20,7 @@
 #include "settings.h"
 #include "compute.h"
 #include "main.h"
+#include "floor.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Global sync flag
@@ -409,80 +410,81 @@ static void DrawParticlesContent()
     ImGui::InputInt("Buffer##pt", &settings.maxparticles);
     if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
     ImGui::SetItemTooltip("GPU allocation size in particles.  Must be >= Count.  Increase before using the emitter.");
-   
-    if(ImGui::DragFloat("spawn grid x", &settings.expandx, 0.5f, settings.minX, settings.maxX)) {
-      
+    if (settings.spawnstate) {
+        if (ImGui::DragFloat("spawn grid x", &settings.expandx, 0.5f, settings.minX, settings.maxX)) {
+
             float change = settings.expandx;
             settings.mx += change;
             settings.nx -= change;
             settings.expandx = 0.0f;
-        if (settings.nx < settings.minX) settings.nx = settings.minX;
-		if (settings.mx > settings.maxX) settings.mx = settings.maxX;
-        if(settings.mx - settings.nx < 5.0f) {
-            settings.mx +=10.0f;
-			settings.nx -= 10.0f;
-		}
-		initbox = true;
-    }
-	
-    if(ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f, settings.minY, settings.maxY)) {
-		float change = settings.expandy;
-        settings.ny -= change;
-        settings.my += change;
-		settings.expandy = 0.0f;
-        if (settings.ny < settings.minY) settings.ny = settings.minY;
-		if (settings.my > settings.maxY) settings.my = settings.maxY;
-        if (settings.my - settings.ny < 5.0f) {
-            settings.my += 10.0f;
-            settings.ny -= 10.0f;
+            if (settings.nx < settings.minX) settings.nx = settings.minX;
+            if (settings.mx > settings.maxX) settings.mx = settings.maxX;
+            if (settings.mx - settings.nx < 5.0f) {
+                settings.mx += 10.0f;
+                settings.nx -= 10.0f;
+            }
+            initbox = true;
         }
-        initbox = true;
-    }
 
-    if(ImGui::DragFloat("spawn grid z", &settings.expandz, 0.5f, settings.minZ, settings.maxz)) {
-		float change = settings.expandz;
-        settings.nz -= change;
-        settings.mz += change;
-		settings.expandz = 0.0f;
-        if (settings.nz < settings.minZ) settings.nz = settings.minZ;
-		if (settings.mz > settings.maxz) settings.mz = settings.maxz;
-        if (settings.mz - settings.nz < 5.0f) {
-            settings.mz += 10.0f;
-            settings.nz -= 10.0f;
+        if (ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f, settings.minY, settings.maxY)) {
+            float change = settings.expandy;
+            settings.ny -= change;
+            settings.my += change;
+            settings.expandy = 0.0f;
+            if (settings.ny < settings.minY) settings.ny = settings.minY;
+            if (settings.my > settings.maxY) settings.my = settings.maxY;
+            if (settings.my - settings.ny < 5.0f) {
+                settings.my += 10.0f;
+                settings.ny -= 10.0f;
+            }
+            initbox = true;
         }
-        initbox = true;
+
+        if (ImGui::DragFloat("spawn grid z", &settings.expandz, 0.5f, settings.minZ, settings.maxz)) {
+            float change = settings.expandz;
+            settings.nz -= change;
+            settings.mz += change;
+            settings.expandz = 0.0f;
+            if (settings.nz < settings.minZ) settings.nz = settings.minZ;
+            if (settings.mz > settings.maxz) settings.mz = settings.maxz;
+            if (settings.mz - settings.nz < 5.0f) {
+                settings.mz += 10.0f;
+                settings.nz -= 10.0f;
+            }
+            initbox = true;
+        }
+
+
+        if (ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
+            float delta = settings.movex;
+            if (settings.mx >= settings.maxX && delta > 0.0f) delta = 0.0f;
+            if (settings.nx <= settings.minX && delta < 0.0f) delta = 0.0f;
+            settings.mx += delta;
+            settings.nx += delta;
+            settings.movex = 0.0f;
+            initbox = true;
+
+        }
+        if (ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
+            float delta = settings.movey;
+            if (settings.my >= settings.maxY && delta > 0.0f) delta = 0.0f;
+            if (settings.ny <= settings.minY && delta < 0.0f) delta = 0.0f;
+            settings.my += delta;
+            settings.ny += delta;
+            settings.movey = 0.0f;
+            initbox = true;
+        }
+        if (ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
+            float delta = settings.movez;
+            if (settings.mz >= settings.maxz && delta > 0.0f) delta = 0.0f;
+            if (settings.nz <= settings.minZ && delta < 0.0f) delta = 0.0f;
+            settings.mz += delta;
+            settings.nz += delta;
+            settings.movez = 0.0f;
+            initbox = true;
+        }
+        if (initbox) { initBoundingBox(); restartSimulation(); initbox = false; }
     }
-   
-   
-    if(ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
-        float delta = settings.movex;
-		if (settings.mx >= settings.maxX && delta > 0.0f) delta = 0.0f;
-		if (settings.nx <= settings.minX && delta < 0.0f) delta = 0.0f;
-        settings.mx += delta;
-        settings.nx += delta;
-        settings.movex = 0.0f;
-        initbox = true;
-        
-    }
-	if(ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
-        float delta = settings.movey;
-        if (settings.my >= settings.maxY && delta > 0.0f) delta = 0.0f;
-        if (settings.ny <= settings.minY && delta < 0.0f) delta = 0.0f;
-        settings.my +=delta;
-        settings.ny +=delta;
-        settings.movey = 0.0f;
-        initbox = true;
-    }
-	if(ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
-        float delta = settings.movez;
-        if (settings.mz >= settings.maxz && delta > 0.0f) delta = 0.0f;
-        if (settings.nz <= settings.minZ && delta < 0.0f) delta = 0.0f;
-        settings.mz += delta;
-        settings.nz += delta;
-        settings.movez = 0.0f;
-        initbox = true;
-    }
-    if (initbox) { initBoundingBox(); restartSimulation(); initbox = false; }
    FillBar(5.f);
 
     ImGui::Spacing();
@@ -545,28 +547,52 @@ static void DrawWorldContent()
     {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+X##wd", &settings.maxX, 0.5f, 1.f, 2000.f, "%.0f");
+        float changex = settings.maxX;
+        if (ImGui::DragFloat("+X##wd", &settings.maxX, 0.5f, 1.f, 2000.f, "%.0f")) {
+            bchg = true;
+            float diff = settings.maxX - changex;
+                settings.floorbounx += diff;
+            
+            initFloor();
+        }
         ImGui::SetItemTooltip("Right wall X.  Drag left to shrink.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-X##wd", &settings.minX, 0.5f, -2000.f, -1.f, "%.0f");
+        float change_x = settings.minX;
+        if (ImGui::DragFloat("-X##wd", &settings.minX, 0.5f, -2000.f, -1.f, "%.0f")) {
+            bchg = true;
+            float diff = settings.minX - change_x;
+            settings.floorboun_x += diff;
+
+           
+            initFloor();
+        }
         ImGui::SetItemTooltip("Left wall X.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+Y##wd", &settings.maxY, 0.5f, 1.f, 2000.f, "%.0f");
+        float changey = settings.maxY;
+        if (ImGui::DragFloat("+Y##wd", &settings.maxY, 0.5f, 1.f, 2000.f, "%.0f")) {
+            bchg = true;
+            float diff = settings.maxY - changey;
+            settings.floorbouny+= diff;
+            initFloor();
+        }
         ImGui::SetItemTooltip("Ceiling Y.");
         ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-Y##wd", &settings.minY, 0.5f, -2000.f, -1.f, "%.0f");
+        float change_y = settings.minY;
+        if (ImGui::DragFloat("-Y##wd", &settings.minY, 0.5f, -2000.f, -1.f, "%.0f")) {
+            bchg = true;
+            float diff = settings.minY - change_y;
+            settings.floorboun_y +=diff;
+            initFloor();
+        }
         ImGui::SetItemTooltip("Floor Y.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         bchg |= ImGui::DragFloat("+Z##wd", &settings.maxz, 0.5f, 0.f, 2000.f, "%.0f");
         ImGui::SetItemTooltip("Back wall Z.");
-        ImGui::TableSetColumnIndex(1);
-        bchg |= ImGui::DragFloat("-Z##wd", &settings.minZ, 0.5f, -2000.f, 0.f, "%.0f");
-        ImGui::SetItemTooltip("Front wall Z.");
-
+    
         ImGui::EndTable();
     }
     if (bchg) { initBoundingBox(); syncsettings = true; }
@@ -578,6 +604,22 @@ static void DrawWorldContent()
     float bz = settings.maxz - settings.minZ;
     ImGui::TextDisabled("%.0f x %.0f x %.0f   vol %.0f", bx, by, bz, bx * by * bz);
 
+    ImGui::Spacing();  
+    ImGui::DragFloat("floor tile size ##wd", &settings.tilesize, 0.5f, 0.5f, 100.f, "%.1f"); SYNC;
+    if (ImGui::DragFloat("floor size##wd", &settings.floorbounds, 0.5f, 0.5f, 1000.f, "%.0f")) {
+        settings.floorbounx = settings.floorbounds * 0.5f;
+        settings.floorboun_x = -settings.floorbounds * 0.5f;
+        settings.floorbouny = settings.floorbounds * 0.5f;
+        settings.floorboun_y = -settings.floorbounds * 0.5f;
+        initFloor();
+    }
+    ImGui::SetItemTooltip("Width and depth of floor plane.  Larger = more visible floor but slower to render.");
+    ImGui::DragFloat("tile variation##wd", &settings.variationStrength, 0.01f, 0.f, 1.f, "%.2f"); SYNC;
+
+    ImGui::ColorEdit3("1st quad tile colour##wd", &settings.color1R); SYNC;
+    ImGui::ColorEdit3("2nd quad tile colour##wd", &settings.color2R); SYNC;
+    ImGui::ColorEdit3("3rd quad tile colour##wd", &settings.color3R); SYNC;
+    ImGui::ColorEdit3("4th quad tile colour##wd", &settings.color4R); SYNC;
     // ── Time ─────────────────────────────────────────────────────────────────
     Sec("Time");
     ImGui::TextDisabled("Speed / Substeps are in the Quick tab.");

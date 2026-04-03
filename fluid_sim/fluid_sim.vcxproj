@@ -21,6 +21,7 @@
     <ClCompile Include="..\imgui_widgets.cpp" />
     <ClCompile Include="..\main.cpp" />
     <ClCompile Include="buttons.cpp" />
+    <ClCompile Include="floor_render.cpp" />
     <ClCompile Include="settings.cpp" />
     <ClCompile Include="ui.cpp" />
   </ItemGroup>
@@ -35,6 +36,7 @@
     <ClInclude Include="..\source\compute.h" />
     <ClInclude Include="..\struct.h" />
     <ClInclude Include="buttons.h" />
+    <ClInclude Include="floor.h" />
     <ClInclude Include="fluid_renderer.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="settings.h" />
