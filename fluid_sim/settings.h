@@ -11,7 +11,7 @@ struct param {
 	float heatMultiplier = 15.0f;
 	float h = 3.50f;
 	float h2 = h * h;
-	float rest_density = 0.1036f;
+	float rest_density = 0.1460f;
 	float pressure = 10000.0f;
 	float nearpressure = 75000.0f;
 	float visc = 0.055f;
@@ -63,15 +63,15 @@ struct param {
 	float gaussSigma = 4.0f;
 	float bgColorR = 0.11373f, bgColorG = 0.11373f, bgColorB = 0.11373f;
 
-	float shallowColorR = 0.28f, shallowColorG = 0.62f, shallowColorB = 0.92f;
-	float deepColorR = 0.02f, deepColorG = 0.10f, deepColorB = 0.38f;
+	float shallowColorR = 0.10196f, shallowColorG = 0.45f, shallowColorB = 0.525f;  // cyan/turquoise
+	float deepColorR = 0.047f, deepColorG = 0.1686f, deepColorB = 0.2588f;           // dark ocean blue
 	float absorption = 4.35f;
 
-	float blurSigma = 14.0f;
-	float blurDepthFall = 5.5f;
+	float blurSigma = 18.0f;
+	float blurDepthFall = 3.0f;
 	float boundsSizeX = 5.0f, boundsSizeY = 5.0f, boundsSizeZ = 5.0f;
-	float skyZenithR = 0.42f, skyZenithG = 0.62f, skyZenithB = 0.95f;
-	float skyHorizonR = 0.58f, skyHorizonG = 0.72f, skyHorizonB = 0.88f;
+	float skyZenithR = 0.121f, skyZenithG = 0.3450f, skyZenithB = 0.5686f;   // bright sky blue
+	float skyHorizonR = 0.60f, skyHorizonG = 0.80f, skyHorizonB = 0.95f; // light horizon cyan
 	float reflStrength = 0.72f;
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
@@ -92,7 +92,7 @@ struct param {
 	int substeps = 2;
 	int fpsCount = 0;
 	int pressureMode = 0;
-	int shaderType = 1;
+	int shaderType = 0;
 	int samplen = 1;
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding

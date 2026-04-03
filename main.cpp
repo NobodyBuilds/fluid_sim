@@ -476,7 +476,7 @@ void drawAll()
 {
 
     glEnable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
+    glEnable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // Ensure VBO is large enough (first frame, or after MaxFps growth).
     // If it had to grow, re-register it with CUDA.
@@ -522,6 +522,7 @@ void drawAll()
         glBindVertexArray(0);
         glUseProgram(0);
     }
+	glDisable(GL_BLEND);
 
     glUseProgram(floorProgram);
     glUniformMatrix4fv(floor_uProj, 1, GL_FALSE, glm::value_ptr(proj));
@@ -720,8 +721,8 @@ int main()
         return -1;
     }
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    //glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     glViewport(0, 0, screenWidth, screenHeight);
 

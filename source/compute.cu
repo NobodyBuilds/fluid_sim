@@ -223,7 +223,6 @@ __global__ void packToVBOKernel(
         float t = clamp(a.w / 100.0f, 0.0f, 1.0f);
         t = pow(t, 0.95f);
         acl[i].w = a.w;
-        float R, G, B;
 
         if (t < 0.35f)
         {
@@ -295,7 +294,6 @@ struct HashCell
     int count;                             // Number of particles in this cell
     int particles[MAX_PARTICLES_PER_CELL]; // Particle indices
 };
-static HashCell *d_hashTable = nullptr;
 static int *d_cellStart = nullptr;
 static int *d_cellEnd = nullptr;
 static int *d_particleHash = nullptr;
@@ -597,7 +595,6 @@ __global__ void computeDensity(
     int cellsChecked = 0;
     int cellsWithParticles = 0;
 
-    bool debug = (i == 0 || i == 345 || i == 344 || i == 100 || i == 500 || i == 1000 || i == 1500 || i == 2000 || i == 2500 || i == 3000 || i == 3500 || i == 4000 || i == 4500 || i == 5000);
     float m_i = particleMass;
 
     float rhon = m_i * ndensity;
@@ -722,18 +719,14 @@ __global__ void computePressure(
     float pn_i = k_ * (v.w - nrd);
 
     float3 visc = {0.0f, 0.0f, 0.0f};
-    float3 deltaV = {0.0f, 0.0f, 0.0f};
 
     float3 vi = make_float3(v.x, v.y, v.z);
-    float epsilon = 0.3f;
     int cx, cy, cz;
     getCell(xi, yi, zi, cellSize, cx, cy, cz);
 
     int neighborCount = 0;
     int cellsChecked = 0;
     int cellsWithParticles = 0;
-    bool debug = 0;
-    // bool debug = (i==0);
     float rho_i = p.w;
     float nrho_i = v.w;
 
@@ -920,7 +913,6 @@ __global__ void updateKernel(float dt, int count, float cold, float4 *pos, float
     a.z = 0;
 
     const float friction = 0.1f; // Surface friction coefficient
-    const float damping = 0.1f;  // Velocity damping on contact
 
     // ---- X bounds ----
     if (p.x <= minX)

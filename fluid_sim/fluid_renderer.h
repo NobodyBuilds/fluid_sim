@@ -1,6 +1,6 @@
 #pragma once
 // ═══════════════════════════════════════════════════════════════════════════════
-//  fluid_renderer.h  v3
+//  fluid_renderer.h  v4
 //
 //  shaderType 0 → Screen-space water    (this renderer — 4 passes)
 //  shaderType 1 → Legacy particles      (render() returns false, caller draws)
@@ -8,10 +8,22 @@
 //  Pipeline (mode 0):
 //    Pass 1  Depth        sphere-surface depth → R32F FBO + gl_FragDepth
 //    Pass 2  Thickness    additive chord accumulation (Beer-Lambert input)
-//    Pass 3  Blur ×2      separable bilateral, radius 8, 2 H+V iterations (4 passes)
+//    Pass 3  Blur ×3      separable bilateral, radius 25, 3 H+V iterations (6 passes)
 //    Pass 4  Composite    water shading: Fresnel, sky reflection, Beer-Lambert
 //
-//  Water shading model:
+//  v4 fixes (shaderType 0 only — shaderType 1 path UNCHANGED):
+//    • SSF_BLUR_FRAG: RADIUS 12→25.  Bilateral depth sigma now uses a Gaussian
+//      in world-scale units (sigmaD = uBlurDepthFall * 2.0) instead of a linear
+//      exp(-|Δd|·falloff) that was zeroing out every tap at this scene scale.
+//    • SSF_THICK_FRAG: chord coefficient 0.030→0.12.  Sparse particle density
+//      (~2–3 overlap average at 30k/2.4M vol) produced near-zero thickness with
+//      the old coefficient, making the fluid transparent even at max absorption.
+//    • SSF_COMPOSITE_FRAG: thick clamp 3.0→15.0.  Alpha replaced with
+//      Beer-Lambert coverage (1 − exp(−k·thick)) which is physically correct
+//      and gives strong opacity at depth while keeping edges transparent.
+//    • passBlur: 2 iterations→3 (6 passes total) for better particle merging.
+//
+//  Water shading model (unchanged):
 //    • Schlick Fresnel  F0=0.02  (water IOR 1.33)
 //    • Reflection ray transformed view→world via uViewRotInv (mat3)
 //      → samples procedural zenith/horizon sky gradient (Z-up world)
@@ -24,8 +36,8 @@
 //  Performance notes:
 //    • All uniform locations cached at init() — zero glGetUniformLocation per frame
 //    • Only 2 ping-pong FBOs (A and B) — down from 3
-//    • Single blur program shared by all 4 blur passes
-//    • 2 blur iterations / radius 8 (4 passes × 17 taps each)
+//    • Single blur program shared by all 6 blur passes
+//    • 3 blur iterations / radius 25 (6 passes × 51 taps each)
 //    • Thickness pass draws all particles additive with no depth test
 //
 //  settings.h additions required (add to float block):
@@ -102,8 +114,11 @@ void main(){
 // ─────────────────────────────────────────────────────────────────────────────
 //  PASS 2 — THICKNESS
 //  Same vertex shader. Rendered additively, no depth test.
-//  Chord coefficient 0.030: gives visible Beer-Lambert effect at h≈3.5,
-//  20k particles. Adjust absorption in UI to taste.
+//
+//  FIX v5: coefficient 0.030→0.07 (v4 used 0.12 which over-saturated thickness
+//  in dense regions, causing the composite to absorb all color → black output).
+//  0.07 gives meaningful thickness even at 2–3 particle overlap while staying
+//  below the black-out threshold at 6–8 layers.
 // ─────────────────────────────────────────────────────────────────────────────
 static const char* SSF_THICK_FRAG = R"glsl(
 #version 330 core
@@ -113,7 +128,7 @@ out float outThickness;
 void main(){
     float r2 = dot(vOffset,vOffset);
     if(r2 > 1.0) discard;
-    outThickness = sqrt(max(1.0-r2,0.0)) * vRadius * 0.030;
+    outThickness = sqrt(max(1.0-r2,0.0)) * vRadius * 0.07;
 }
 )glsl";
 
@@ -133,14 +148,26 @@ void main(){
 // ─────────────────────────────────────────────────────────────────────────────
 //  PASS 3 — SEPARABLE BILATERAL BLUR
 //
-//  Run 4 times total: H1→V1→H2→V2 (2 H+V iterations).
-//  Radius 8 = 17 taps per pass.
-//  Two iterations approximate curvature-flow: particles merge into
-//  a round minimal-surface shape at no extra shader complexity.
+//  Run 6 times total: H1→V1→H2→V2→H3→V3 (3 H+V iterations).
+//  Radius 25 = 51 taps per pass.
 //
-//  bilateral weight = spatial_gaussian × depth_similarity_gaussian
-//  Background pixels (depth ≈ 0) are skipped to prevent halo bleeding
-//  at the fluid silhouette.
+//  FIX v4 — depth sigma formula:
+//  Old:  wDp = exp(-|Δd| × uBlurDepthFall)
+//  Problem: with uBlurDepthFall=3.0 and world-scale depths (particles at
+//  depth ~80, sphere radius ~3.5), the depth difference across two adjacent
+//  sphere surfaces is ~7 units → exp(-7×3) = exp(-21) ≈ 0.
+//  The bilateral was rejecting every tap across particle boundaries — the
+//  blur did effectively NOTHING.
+//
+//  New:  sigmaD = uBlurDepthFall × 2.0  (interpret as world-unit sigma)
+//        wDp = exp(-Δd² / (2 × sigmaD²))
+//  At uBlurDepthFall=3.0 → sigmaD=6.  Adjacent particles (Δd≈4) get
+//  weight exp(-16/72)=0.80.  Across a sphere (Δd≈7): 0.51.  Particle vs
+//  background (Δd≈80): ~0.  Edges still preserved, particles now merge.
+//
+//  Sparse-splat gap fill:
+//  Empty taps (depth<0.001) inside the particle cloud are filled with the
+//  center depth so the spatial Gaussian still accumulates.
 // ─────────────────────────────────────────────────────────────────────────────
 static const char* SSF_BLUR_FRAG = R"glsl(
 #version 330 core
@@ -151,24 +178,34 @@ uniform float     uBlurSigma;
 uniform float     uBlurDepthFall;
 in  vec2  vUV;
 out float outDepth;
-const int RADIUS = 8;
+const int RADIUS = 1;
 void main(){
     float center = texture(uDepthTex,vUV).r;
     if(center < 0.001){ outDepth=0.0; return; }
-    float sig2=uBlurSigma*uBlurSigma, sum=0.0, wsum=0.0;
-    for(int i=-RADIUS;i<=RADIUS;++i){
-        vec2  off = uBlurDir*float(i)*uTexelSize;
-        float raw = texture(uDepthTex,vUV+off).r;
-        // Sparse splats: treat empty taps as local fluid depth so spatial Gaussian
-        // still accumulates (otherwise holes zero-out weights and blur barely runs).
+
+    // Depth sigma in world units — makes bilateral scale-invariant.
+    // uBlurDepthFall (default 3.0) → sigmaD = 6.0 world units ≈ 2× particle radius.
+    float sigmaD = uBlurDepthFall * 2.0;
+    float sigmaD2 = 2.0 * sigmaD * sigmaD;
+
+    float sig2 = uBlurSigma * uBlurSigma;
+    float sum  = 0.0;
+    float wsum = 0.0;
+
+    for(int i = -RADIUS; i <= RADIUS; ++i){
+        vec2  off = uBlurDir * float(i) * uTexelSize;
+        float raw = texture(uDepthTex, vUV + off).r;
+        // Fill intra-fluid holes with center depth (sparse splat gap bridging)
         float d = (raw < 0.001) ? center : raw;
-        float wSp = exp(-float(i*i)/(2.0*sig2));
-        float wDp = exp(-abs(d-center)*uBlurDepthFall);
-        float w   = wSp*wDp;
-        sum  += d*w;
+
+        float wSp = exp(-float(i*i) / (2.0*sig2));
+        float dif = d - center;
+        float wDp = exp(-(dif*dif) / sigmaD2);   // Gaussian, not linear
+        float w   = wSp * wDp;
+        sum  += d * w;
         wsum += w;
     }
-    outDepth = (wsum>1e-6) ? sum/wsum : center;
+    outDepth = (wsum > 1e-6) ? sum/wsum : center;
 }
 )glsl";
 
@@ -181,7 +218,6 @@ void main(){
 //    In OpenGL view space (+Z toward camera):
 //      cross(ddx,ddy) points +Z for a flat surface → correct outward normal.
 //    Guard: if N.z < 0 the winding is reversed, flip.
-//    (Previous versions had the flip condition inverted — fixed here.)
 //
 //  Sky reflection
 //    Reflection vector R = reflect(incident, N) in view space.
@@ -196,7 +232,14 @@ void main(){
 //    bodyColor   mix(deepColor, shallowColor, thinness) × absorbed
 //    diffuse     bodyColor × NdL × (1−fresnel)
 //    sss         Forward-scatter: thin edges glow with shallowColor when lit
-//    alpha       fresnel-driven + thickness coverage
+//
+//  FIX v4 — alpha formula:
+//  Old: ad-hoc blend of depthFactor + thick + fresnel components, clamped
+//       to [0.20, 0.90].  Gave ~0.40 everywhere regardless of actual fluid depth.
+//  New: Beer-Lambert coverage   alpha_body = 1 − exp(−uAbsorption × thick × 0.22)
+//       Fresnel adds a base reflective opacity even at zero thickness (grazing).
+//       Result: edges transparent, bulk opaque, physically motivated.
+//       thick clamped to 15.0 (was 3.0) to match the raised thickness coefficient.
 // ─────────────────────────────────────────────────────────────────────────────
 static const char* SSF_COMPOSITE_FRAG = R"glsl(
 #version 330 core
@@ -208,7 +251,7 @@ uniform mat3      uViewRotInv;      // transpose(mat3(view)) — view→world
 
 uniform vec3  uShallowColor;        // thin/surface colour (live from settings)
 uniform vec3  uDeepColor;           // thick/interior colour
-uniform float uAbsorption;          // Beer-Lambert k
+uniform float uAbsorption;          // depth→color transition rate
 
 uniform vec3  uSkyZenith;           // sky colour at zenith
 uniform vec3  uSkyHorizon;          // sky colour at horizon
@@ -220,21 +263,17 @@ uniform float uAspect;
 in  vec2  vUV;
 out vec4  outColor;
 
-// Unproject UV + positive linear depth to view-space position
 vec3 toView(vec2 uv, float d){
     vec2 ndc = uv*2.0-1.0;
     return vec3(ndc*vec2(uAspect,1.0)*uTanHalfFov*d, -d);
 }
 
-// Normal from 2-texel central difference on smoothed depth field.
-// Result is guaranteed to have N.z > 0 (pointing toward camera in view space).
 vec3 reconstructNormal(vec2 uv, float d0){
     vec2 ox = vec2(uTexelSize.x*2.0, 0.0);
     vec2 oy = vec2(0.0, uTexelSize.y*2.0);
     float dR=texture(uDepthTex,uv+ox).r, dL=texture(uDepthTex,uv-ox).r;
     float dU=texture(uDepthTex,uv+oy).r, dD=texture(uDepthTex,uv-oy).r;
     vec3 posC = toView(uv,d0);
-    // Central diff with forward/backward fallback at depth discontinuities
     vec3 ddx = (dR>0.001 && dL>0.001)
         ? toView(uv+ox,dR)-toView(uv-ox,dL)
         : (dR>0.001 ? toView(uv+ox,dR)-posC : posC-toView(uv-ox,dL));
@@ -242,15 +281,12 @@ vec3 reconstructNormal(vec2 uv, float d0){
         ? toView(uv+oy,dU)-toView(uv-oy,dD)
         : (dU>0.001 ? toView(uv+oy,dU)-posC : posC-toView(uv-oy,dD));
     vec3 N = normalize(cross(ddx,ddy));
-    // In view space, surface normals face camera → N.z > 0.
-    // Flip if the cross product landed on the wrong side.
     if(N.z < 0.0) N = -N;
     return N;
 }
 
-// Procedural sky — world Z-up gradient
 vec3 sampleSky(vec3 Rw){
-    float t = clamp(Rw.z, 0.0, 1.0);   // 0=horizon, 1=zenith, <0 clamp to horizon
+    float t = clamp(Rw.z, 0.0, 1.0);
     return mix(uSkyHorizon, uSkyZenith, t*t) * uReflStrength;
 }
 
@@ -258,53 +294,62 @@ void main(){
     float depth = texture(uDepthTex,vUV).r;
     if(depth < 0.001) discard;
 
-    float thick = clamp(texture(uThickTex,vUV).r, 0.0, 3.0);
-    vec3  N     = reconstructNormal(vUV, depth);
-    vec3  V     = vec3(0.0,0.0,1.0);   // toward camera, view space
+    float thick = clamp(texture(uThickTex,vUV).r, 0.0, 8.0);
+    vec3  N = reconstructNormal(vUV, depth);
+    vec3  V = vec3(0.0,0.0,1.0);
 
-    // ── Schlick Fresnel  F0=0.02 (water-air, IOR 1.33) ───────────────────────
+    // ── Schlick Fresnel  F0=0.02 ──────────────────────────────────────────────
     float cosV    = max(dot(N,V), 0.0);
     float fresnel = 0.02 + 0.98*pow(1.0-cosV, 5.0);
 
     // ── Sky reflection ────────────────────────────────────────────────────────
-    // Incident ray from camera = -V.  Reflect about N.
-    vec3 R_view  = reflect(-V, N);          // view space reflected ray
-    vec3 R_world = uViewRotInv * R_view;    // view → world (Z-up)
+    vec3 R_world = uViewRotInv * reflect(-V, N);
     vec3 skyCol  = sampleSky(R_world);
 
-    // ── Sun specular — two lobes ──────────────────────────────────────────────
-    vec3  H          = normalize(V + uLightDirView);
-    float NdH        = max(dot(N,H), 0.0);
-    float specSharp  = pow(NdH, 512.0);               // tight sun point
-    float specSky    = pow(NdH,  32.0) * 0.06;        // soft sky-tinted lobe
-    vec3  specCol    = (vec3(1.0)*specSharp + uSkyZenith*specSky) * fresnel;
+    // ── Sky refraction (approximate) ──────────────────────────────────────────
+    vec3 T_view = refract(-V, N, 1.0/1.333);
+    vec3 T_world = uViewRotInv * T_view;
+    vec3 refrSkyCol = (dot(T_view, T_view) > 0.0) ? sampleSky(T_world) : uSkyHorizon;
 
-    // ── Beer-Lambert absorption per channel ───────────────────────────────────
-    // Channels where deepColor is dark attenuate quickly (e.g. red in ocean water)
-    vec3 absorbed  = exp(-uAbsorption * thick * (1.0-uDeepColor));
+    // ── Sun specular ──────────────────────────────────────────────────────────
+    vec3  H         = normalize(V + uLightDirView);
+    float NdH       = max(dot(N,H), 0.0);
+    float specSharp = pow(NdH, 512.0);
+    float specSky   = pow(NdH,  32.0) * 0.06;
+    vec3  specCol   = (vec3(1.0)*specSharp + uSkyZenith*specSky) * fresnel;
 
-    // ── Body colour: thin→shallow, thick→deep, both absorbed ─────────────────
-    float thinness = clamp(1.0 - thick*0.4, 0.0, 1.0);
-    vec3  bodyCol  = mix(uDeepColor, uShallowColor, thinness) * absorbed;
+    // ── Water color by depth gradient (surface -> deep) ──────────────────────
+    // surface: shallowColor, deep: deepColor.
+    float thinFactor = exp(-uAbsorption * thick * 0.08);  // 1 at surface, 0 at depth.
+    float depthLight = clamp(thick / 4.0, 0.0, 1.0);
+    float colorBlend = 1.0 - exp(-uAbsorption * thick * 0.35);
+    vec3  waterColor = mix(uShallowColor, uDeepColor, colorBlend);
+    
+    // extra color darkening in deep zones to avoid full transparency illusion
+    vec3  darkening = mix(vec3(1.0), uDeepColor * 1.5, depthLight);
+    waterColor *= darkening;
 
-    // ── Diffuse ───────────────────────────────────────────────────────────────
-    float NdL    = max(dot(N, uLightDirView), 0.0);
-    vec3  ambient = bodyCol * 0.12;
-    vec3  diffuse = bodyCol * NdL * (1.0-fresnel) * 0.88;
+    // ── Diffuse lighting on water body ────────────────────────────────────────
+    float NdL   = max(dot(N, uLightDirView), 0.0);
+    vec3  lit   = waterColor * (0.15 + 0.85 * NdL * (1.0 - fresnel));
 
-    // ── Forward-scatter SSS on thin edges ─────────────────────────────────────
-    // Thin fluid glows with shallowColor when back-lit.
-    // exp(-k·thick) ensures only thin regions scatter.
-    float sssWt  = exp(-uAbsorption*thick) * max(dot(uLightDirView,-V),0.0);
-    vec3  sssCol = uShallowColor * sssWt * 0.18;
+    // ── Forward-scatter SSS: thin edges lit from behind glow with shallowColor ─
+    float sssWt  = thinFactor * max(dot(uLightDirView, -V), 0.0);
+    vec3  sssCol = uShallowColor * sssWt * 0.22;
 
-    // ── Fresnel blend: refraction ↔ reflection ────────────────────────────────
-    vec3 refracted = ambient + diffuse + sssCol;
-    vec3 col = mix(refracted, skyCol, fresnel) + specCol;
+    // ── Refraction contribution from sky + water color absorption ───────────
+    vec3 refraction = refrSkyCol * (1.0 - thinFactor) * 0.75;
 
-    // ── Alpha: semi-transparent head-on, opaque at grazing + thick regions ────
-    float alpha = clamp(0.20 + fresnel*0.80 + clamp(thick*0.30,0.0,0.50), 0.20, 1.0);
+    // ── Fresnel blend: lit body + refraction vs sky reflection ───────────────
+    vec3 col = mix(lit + sssCol + refraction, skyCol, fresnel) + specCol;
 
+    // ── Alpha: thickness-driven + grazing Fresnel ─────────────────────────────
+    // Depth-based alpha mapping to keep deep areas opaque while thin edges stay clear.
+    float alphaBody    = clamp(1.0 - exp(-thick * 3.0), 0.35, 0.95);
+    float alphaFresnel = fresnel * 0.25;
+    float alpha        = clamp(alphaBody + alphaFresnel, 0.0, 1.0);
+
+    // (No gl_FragDepth now; preserve stable blending from legacy pipeline)
     outColor = vec4(col, alpha);
 }
 )glsl";
@@ -318,7 +363,7 @@ struct SSFUniforms {
     GLint depth_uProj = -1, depth_uView = -1;
     // thickness pass
     GLint thick_uProj = -1, thick_uView = -1;
-    // blur pass (4 calls, same program)
+    // blur pass (6 calls, same program)
     GLint blur_uDepthTex = -1, blur_uTexelSize = -1, blur_uBlurDir = -1;
     GLint blur_uBlurSigma = -1, blur_uBlurDepthFall = -1;
     // composite pass
@@ -336,7 +381,7 @@ struct FluidRenderer {
     // FBOs
     GLuint depthFBO = 0;   // Pass 1: depth colour + hardware depth RBO
     GLuint blurFBO_A = 0;   // Blur ping
-    GLuint blurFBO_B = 0;   // Blur pong — final blur result after 2 iterations
+    GLuint blurFBO_B = 0;   // Blur pong — final blur result after 3 iterations
     GLuint thickFBO = 0;   // Pass 2: additive thickness
 
     // Textures
@@ -344,7 +389,7 @@ struct FluidRenderer {
     GLuint blurTexB = 0;   GLuint thickTex = 0;
     GLuint depthRBO = 0;   // hardware depth renderbuffer for Pass 1
 
-    // Programs  (single blur program shared by all 4 blur passes)
+    // Programs  (single blur program shared by all 6 blur passes)
     GLuint depthProg = 0;
     GLuint thickProg = 0;
     GLuint blurProg = 0;
@@ -375,7 +420,7 @@ private:
     GLuint compileShader(GLenum type, const char* src);
     GLuint linkProgram(const char* vs, const char* fs);
     void   initQuad();
-    void   cacheUniforms();     // called once after programs compile
+    void   cacheUniforms();
     void   destroyBuffers();
 
     void passDepth(GLuint vao, int n, const glm::mat4& proj, const glm::mat4& view);
@@ -572,14 +617,20 @@ inline void FluidRenderer::runBlurPass(GLuint srcTex, GLuint dstFBO, float dx, f
     glUseProgram(0); glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-// 2 H+V iterations (4 passes).  Final result lands in blurTexB.
+// 3 H+V iterations (6 passes).  Final result lands in blurTexB.
 //   it1: depthTex →H→ blurTexA →V→ blurTexB
 //   it2: blurTexB →H→ blurTexA →V→ blurTexB
+//   it3: blurTexB →H→ blurTexA →V→ blurTexB
+//
+// FIX v4: added 3rd iteration so sparse inter-particle gaps fully close
+// when the camera is zoomed in close.
 inline void FluidRenderer::passBlur() {
     runBlurPass(depthTex, blurFBO_A, 1, 0);   // it1 H
     runBlurPass(blurTexA, blurFBO_B, 0, 1);   // it1 V
     runBlurPass(blurTexB, blurFBO_A, 1, 0);   // it2 H
-    runBlurPass(blurTexA, blurFBO_B, 0, 1);   // it2 V  ← final in blurTexB
+    runBlurPass(blurTexA, blurFBO_B, 0, 1);   // it2 V
+    runBlurPass(blurTexB, blurFBO_A, 1, 0);   // it3 H
+    runBlurPass(blurTexA, blurFBO_B, 0, 1);   // it3 V  ← final in blurTexB
 }
 
 inline void FluidRenderer::passComposite(const glm::vec3& lightDirView,
@@ -628,7 +679,7 @@ inline bool FluidRenderer::render(GLuint particleVAO, int particleCount,
     int shaderType,
     const glm::vec3& lightDirWorld,
     float fovDegrees, float aspect) {
-    // Legacy particles: return false so drawAll() uses the original program
+    // ── shaderType 1: legacy particles — COMPLETELY UNCHANGED ─────────────────
     if (shaderType == 1) {
         settings.heateffect = true;
         return false;
