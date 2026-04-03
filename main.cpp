@@ -252,10 +252,7 @@ bool ensureVBOCapacity(size_t verts)
 
     vbo_capacity = verts * 2 + 256;
     if (vbo)
-    {
-        unregisterGLBuffer();
         glDeleteBuffers(1, &vbo);
-    }
     if (vao == 0)
         glGenVertexArrays(1, &vao);
 
