@@ -126,7 +126,7 @@ int *ncount = nullptr; // saves nighbor count per particle to apply airdrag late
 float4 *positions_sorted = nullptr;
 float4 *velocity_sorted = nullptr;
 
-extern "C" void initgpu(int count)
+extern "C" bool initgpu(int count)
 {
 
     cudaMalloc(&positions, count * sizeof(float4));
@@ -143,8 +143,9 @@ extern "C" void initgpu(int count)
     if (err != cudaSuccess)
     {
         printf("ERROR: CUDA mem allocation failed: %s\n", cudaGetErrorString(err));
-        return;
+        return false;
     }
+    return true;
 }
 extern "C" void freegpu()
 {
@@ -331,7 +332,7 @@ __device__ __host__ inline unsigned int getHashFromPos(float x, float y, float z
     return spatialHash(ix, iy, iz, hs);
 }
 
-extern "C" void initDynamicGrid(int maxParticles)
+extern "C" bool initDynamicGrid(int maxParticles)
 {
     // using maxpartcles which are 2-5X total particles for emiiter to work and dynamic add or remove particles
     HASH_TABLE_SIZE = 1;
@@ -349,7 +350,7 @@ extern "C" void initDynamicGrid(int maxParticles)
     if (err != cudaSuccess)
     {
         printf("ERROR: CUDA allocation failed: %s\n", cudaGetErrorString(err));
-        return;
+        return false;
     }
     // Initialize
     //  cudaMemset(d_hashTable, 0, hashTableBytes);
@@ -367,6 +368,14 @@ extern "C" void initDynamicGrid(int maxParticles)
         maxParticles);
 
     cudaMalloc(&d_sortTempStorage, sortTempBytes);
+
+    err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        printf("ERROR: CUDA sort temp allocation failed: %s\n", cudaGetErrorString(err));
+        return false;
+    }
+    return true;
 }
 extern "C" void freeDynamicGrid()
 {

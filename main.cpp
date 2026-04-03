@@ -252,14 +252,26 @@ bool ensureVBOCapacity(size_t verts)
 
     vbo_capacity = verts * 2 + 256;
     if (vbo)
+    {
+        unregisterGLBuffer();
         glDeleteBuffers(1, &vbo);
+    }
     if (vao == 0)
         glGenVertexArrays(1, &vao);
 
     glGenBuffers(1, &vbo);
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vbo_capacity * sizeof(GLVertex), nullptr, GL_STREAM_DRAW);
+    size_t bufferSize = vbo_capacity * sizeof(GLVertex);
+    printf("Allocating VBO with capacity for %zu vertices (%.2f MB)\n", vbo_capacity, bufferSize / (1024.0 * 1024.0));
+    glBufferData(GL_ARRAY_BUFFER, bufferSize, nullptr, GL_STREAM_DRAW);
+    
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR)
+    {
+        printf("ERROR: OpenGL VBO allocation failed: %x\n", err);
+        return false;
+    }
 
     GLsizei stride = sizeof(GLVertex);
 
@@ -353,8 +365,17 @@ void restartSimulation()
     freeDynamicGrid();
     settings.samplecount = 0;
     freegpu();
-    initgpu(settings.maxparticles);
-    initDynamicGrid(settings.maxparticles);
+    if (!initgpu(settings.maxparticles))
+    {
+        printf("Failed to allocate GPU memory for %d particles\n", settings.maxparticles);
+        
+    }
+    if (!initDynamicGrid(settings.maxparticles))
+    {
+        printf("Failed to allocate dynamic grid for %d particles\n", settings.maxparticles);
+        freegpu();
+        return;
+    }
     registerBodies();
     settings.nopause = false;
     settings.spawnstate = true;
@@ -459,7 +480,7 @@ void drawAll()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // Ensure VBO is large enough (first frame, or after MaxFps growth).
     // If it had to grow, re-register it with CUDA.
-    if (ensureVBOCapacity((size_t)settings.count * 3))
+    if (ensureVBOCapacity((size_t)settings.maxparticles * 3))
     {
         unregisterGLBuffer();
         registerGLBuffer(vbo);
@@ -752,8 +773,17 @@ int main()
     calcKernels();
     initBoundingBox();
     initFloor();
-    initgpu(settings.maxparticles);
-    initDynamicGrid(settings.maxparticles);
+    if (!initgpu(settings.maxparticles))
+    {
+        printf("Failed to initialize GPU memory. Exiting.\n");
+        return -1;
+    }
+    if (!initDynamicGrid(settings.maxparticles))
+    {
+        printf("Failed to initialize dynamic grid. Exiting.\n");
+        freegpu();
+        return -1;
+    }
 
     ensureVBOCapacity((size_t)settings.maxparticles * 3);
     registerGLBuffer(vbo);
