@@ -493,7 +493,7 @@ static void DrawParticlesContent()
     ImGui::SetItemTooltip("Visual + collision radius.  Restart required.");
 
     ImGui::InputFloat("Mass##pt", &settings.particleMass, 0.1f, 0.5f, "%.3f");
-    if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
+   
     ImGui::SetItemTooltip("Particle mass.  Affects pressure and density contributions.");
 
     // ── Spawn tint ────────────────────────────────────────────────────────────

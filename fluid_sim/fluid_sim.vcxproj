@@ -101,7 +101,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;WIN64;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\visual_studio\fluid_sim\glad\include;D:\visual_studio\fluid_sim\glfw-3.4.bin.WIN64\include;D:\visual_studio\fluid_sim\imgui-1.91.1;D:\visual_studio\fluid_sim\glm-1.0.2;D:\visual_studio\fluid_sim\imgui-1.91.1\backends;"D:\visual_studio\fluid_sim\source";%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\visual_studio\fluid_sim\glad\include;D:\visual_studio\fluid_sim\glfw-3.4.bin.WIN64\include;D:\visual_studio\fluid_sim\imgui-1.91.1;D:\visual_studio\fluid_sim\glm-1.0.2;D:\visual_studio\fluid_sim\imgui-1.91.1\backends;D:\visual_studio\fluid_sim\source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <DebugInformationFormat>None</DebugInformationFormat>

@@ -645,14 +645,14 @@ __global__ void computeDensity(
                         float r = r2 * invR;
                         float v = h2 - r2;
                         //  float v2 = h - r;
-                        float vcube = v * v * v;
+                        float vcube = v * v * v ;
 
                         float d = pollycoef6 * vcube; // precomputed pollycoef6
                         // float d = spikycoef2 * v2 * v2;
                         float m_j = particleMass; // mass
                         rho += m_j * d;
                         float x = h - r;
-                        float nd = spikycoef * x * x * x;
+                        float nd = spikycoef * x * x * x ;
                         rhon += m_j * nd;
                         neighborCount++;
                     }
@@ -666,7 +666,7 @@ __global__ void computeDensity(
      }*/
 
     pos[i].w = fmaxf(rho, mindensity);
-    vel[i].w = fmaxf(rhon, mindensity * 0.1f);
+    vel[i].w = fmaxf(rhon, mindensity );
 }
 
 __global__ void computePressure(
@@ -716,7 +716,7 @@ __global__ void computePressure(
         force.z -= wallForce * (1.0f - (maxz - zi) / wallDst);
 
     float p_i = pressure * (p.w - restDensity);
-    float pn_i = k_ * (v.w - nrd);
+    float pn_i = k_ * v.w ;
 
     float3 visc = {0.0f, 0.0f, 0.0f};
 
@@ -775,7 +775,7 @@ __global__ void computePressure(
                         float r = r2 * invR;
 
                         float p_j = pressure * (pj.w - restDensity);
-                        float np_j = k_ * (vj.w - nrd);
+                        float np_j = k_ * vj.w;
 
                         float3 dir = {dx_val * invR, dy_val * invR, dz_val * invR};
 
@@ -814,9 +814,9 @@ __global__ void computePressure(
 
     float4 accl;
 
-    accl.x = (force.x + visc.x);
-    accl.y = (force.y + visc.y);
-    accl.z = (force.z + visc.z);
+    accl.z = (force.z + visc.z)/particlemass;
+    accl.x = (force.x + visc.x)/particlemass;
+    accl.y = (force.y + visc.y)/particlemass;
     accl.w = 0.0f;
     int org = particleIndex[i]; // where this particle came from in the original unsorted array
                                 // velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy
@@ -879,7 +879,9 @@ __global__ void debug(int n, float4 *pos, float4 *vel, int *ncount)
 
 // update
 __global__ void updateKernel(float dt, int count, float cold, float4 *pos, float4 *vel, float4 *acl,
-                             float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf, int *ncount, float coeff)
+                             float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float restitution, float downf, int *ncount, float coeff,
+    float particlemass 
+    )
 {
     // Vec3 acc_new;
 
@@ -894,7 +896,7 @@ __global__ void updateKernel(float dt, int count, float cold, float4 *pos, float
     vl.x += a.x * dt * 0.5f;
     vl.y += a.y * dt * 0.5f;
     vl.z += a.z * dt * 0.5f;
-    vl.z -= downf * dt;
+    vl.z -= (downf/particlemass)*dt;
 
     if (ncount[i] < 5)
     {
@@ -1186,7 +1188,7 @@ extern "C" void computephysics(float dt)
         {
             // update positipons
 
-            updateKernel<<<blocks, THREADS>>>(deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce, ncount, settings.airdrag);
+            updateKernel<<<blocks, THREADS>>>(deltaTime, settings.count, settings.cold, positions, velocity, accelration, settings.minX, settings.maxX, settings.minY, settings.maxY, settings.minZ, settings.maxz, settings.restitution, settings.gravityforce, ncount, settings.airdrag,settings.particleMass);
             // acelrations reset
 
             if (settings.sph)

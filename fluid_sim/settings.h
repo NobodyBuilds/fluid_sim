@@ -5,17 +5,17 @@ struct param {
 	float fixedDt = 1 / 120.0f;
 	float simspeed = 1.0f;
 	float size = 1.0f;
-	float particleMass = 1.0f;
+	float particleMass = 0.20f;
 	float cold = 4.500f;
 	float spacing = 1.01f;
 	float heatMultiplier = 15.0f;
-	float h = 3.50f;
+	float h = 3.70f;
 	float h2 = h * h;
-	float rest_density = 0.1460f;
-	float pressure = 10000.0f;
-	float nearpressure = 75000.0f;
-	float visc = 0.055f;
-	float gravityforce = 150.8f;
+	float rest_density = 0.02400f;
+	float pressure = 2500.0f;
+	float nearpressure = 407.0f;
+	float visc = 0.0090f;
+	float gravityforce = 20.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -125.0f;
@@ -44,7 +44,7 @@ struct param {
 	float fpsTimer = 0.0f;
 	float accumulator = 0.0f;
 	float fps = 0.0f;
-	float walldst = 0.90f;
+	float walldst = 0.25f;
 	float wallrep = 58.0f;
 
 	float tilesize = 5.0f;
@@ -92,7 +92,7 @@ struct param {
 	int substeps = 2;
 	int fpsCount = 0;
 	int pressureMode = 0;
-	int shaderType = 0;
+	int shaderType = 1;
 	int samplen = 1;
 	// === BOOL VARIABLES (1 byte each) ===
 	// Grouped together to minimize padding
