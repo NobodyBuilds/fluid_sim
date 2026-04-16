@@ -1194,7 +1194,7 @@ extern "C" void computephysics(float dt)
             if (settings.sph)
             {
                 // builds grid and sorted arrays with pridicted positions
-                buildDynamicGrid(settings.count, d_cellsize, positions, deltaTime);
+                 buildDynamicGrid(settings.count, d_cellsize, positions, deltaTime); 
 
                 // uses p pos for stability
                 computeDensity<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);

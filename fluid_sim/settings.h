@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 struct param {
 	// === FLOAT VARIABLES (4 bytes each) ===
 	// Grouped for cache locality and alignment
@@ -29,7 +29,7 @@ struct param {
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
 	float cellSize = 1.0f;
-	float nearRestDensity = 0.153f;
+	float nearRestDensity = 0.153f;//not used atall wasted variable :D
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
@@ -54,34 +54,54 @@ struct param {
 	float color3R = 0.3f, color3G = 0.851f, color3B = 0.608f;
 	float color4R = 0.851f, color4G = 0.792f, color4B = 0.361f;
 	float floorbounds = 600.0f;
-	float floorbounx = floorbounds*0.5f;   // +X extent for floor
-	float floorboun_x = -floorbounds*0.5f; // -X extent for floor
-	float floorbouny = floorbounds * 0.5f;   // +Y extent for floor
-	float floorboun_y = -floorbounds * 0.5f; // -Y extent for floor
-	
+	float floorbounx = floorbounds * 0.5f;
+	float floorboun_x = -floorbounds * 0.5f;
+	float floorbouny = floorbounds * 0.5f;
+	float floorboun_y = -floorbounds * 0.5f;
+
 	// ── Rendering ────────────────────────────────────────────────────────────
 	float gaussSigma = 4.0f;
 	float bgColorR = 0.11373f, bgColorG = 0.11373f, bgColorB = 0.11373f;
 
-	float shallowColorR = 0.10196f, shallowColorG = 0.45f, shallowColorB = 0.525f;  // cyan/turquoise
-	float deepColorR = 0.047f, deepColorG = 0.1686f, deepColorB = 0.2588f;           // dark ocean blue
-	float absorption = 4.35f;
+	// Retune: brighter cyan edge, darker saturated deep (matches Lague reference)
+	float shallowColorR = 0.05f, shallowColorG = 0.55f, shallowColorB = 0.65f;
+	float deepColorR = 0.01f, deepColorG = 0.06f, deepColorB = 0.18f;
+	float absorption = 0.4f;
 
-	float blurSigma = 18.0f;
-	float blurDepthFall = 3.0f;
+	// DEPRECATED — kept to avoid breaking existing binary saves. Use blurWorldRadius.
+	float blurSigma = 14.0f;
+
+	
+	float blurDepthFall = 3.75f;
+
 	float boundsSizeX = 5.0f, boundsSizeY = 5.0f, boundsSizeZ = 5.0f;
-	float skyZenithR = 0.121f, skyZenithG = 0.3450f, skyZenithB = 0.5686f;   // bright sky blue
-	float skyHorizonR = 0.60f, skyHorizonG = 0.80f, skyHorizonB = 0.95f; // light horizon cyan
-	float reflStrength = 0.72f;
+	float skyZenithR = 0.53f, skyZenithG = 0.81f, skyZenithB = 0.98f;
+	float skyHorizonR = 0.85f, skyHorizonG = 0.91f, skyHorizonB = 0.97f;
+	float reflStrength = 0.8f;   // unused by SSF composite — sky reflection removed
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
-	float extinctionR = 0.45f, extinctionG = 0.18f, extinctionB = 0.08f;
+	// Feature 2: per-channel Beer-Lambert extinction — match Lague reference (X:1.8 Y:0.5 Z:0.3)
+	float extinctionR = 1.80f, extinctionG = 0.50f, extinctionB = 0.30f;
 	float mx = 50.0f, my = 50.0f, mz = 25.0f;
 	float nx = -50.0f, ny = -50.0f, nz = -25.0f;
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
 	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
+
+	// DEPRECATED — replaced by full Snell's law refraction. Kept for binary compat.
+	float refrStrength = 0.018f;
+
+	// Feature 3: fake volumetric self-shadow strength — unused (shadow term removed)
+	float shadowStrength = 1.5f;
+
+	// -- Bilateral blur (replaces fixed blurSigma) --
+	float blurWorldRadius = 0.35f;    // world-space kernel radius
+	float blurStrength = 0.85f;    // sigma scale factor
+	float blurDiffStrength = 8.0f;     // depth-similarity falloff
+	float refrMult = 0.5f;     // refraction ray march scale
+
 	double fuc_ms = 0.0;
+
 	// === INT VARIABLES (4 bytes each) ===
 	int totalBodies = 30000;
 	int maxparticles = totalBodies * 5;
@@ -94,10 +114,10 @@ struct param {
 	int pressureMode = 0;
 	int shaderType = 1;
 	int samplen = 1;
+	int blurMaxRadius = 20;            // screen-space pixel radius cap
+
 	// === BOOL VARIABLES (1 byte each) ===
-	// Grouped together to minimize padding
 	bool sph = true;
-	
 	bool nopause = true;
 	bool heateffect = true;
 	bool addParticle = false;

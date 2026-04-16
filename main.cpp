@@ -497,7 +497,7 @@ void drawAll()
         camera.position + camera.forward,
         camera.up);
     glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 0.6f, 1.0f));
-    float aspect = (float)currentWidth / (float)screenHeight;
+    float aspect = (float)currentWidth / (float)currentHeight;
 
     if (settings.boundingBox)
     {
@@ -548,7 +548,7 @@ void drawAll()
                                          settings.shaderType,
                                          lightDir,
                                          camera.fov, aspect);
-
+	glDisable(GL_BLEND);
     if (!rendered)
     {
         glUseProgram(program);
@@ -685,6 +685,7 @@ void framebuffer_size_callback(GLFWwindow *w, int width, int height)
     currentWidth = width;
     currentHeight = height;
     glViewport(0, 0, width, height);
+    fluidRenderer.resize(width, height);
     view.cx = width * 0.5f;
     view.cy = height * 0.5f;
     view.height = (float)height;

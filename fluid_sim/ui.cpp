@@ -360,8 +360,6 @@ static void DrawFluidContent()
     ImGui::DragFloat("Rest rho##fl", &settings.rest_density, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
     ImGui::SetItemTooltip("Target equilibrium density.  Raise to attract particles.  Lower to spread them.");
 
-	ImGui::DragFloat("near rest density##fl", &settings.nearRestDensity, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
-	ImGui::SetItemTooltip("Target equilibrium near-density.  Raise to increase short-range repulsion.  Lower to allow closer clumping.");
     // ── Pressure ─────────────────────────────────────────────────────────────
     Sec("Pressure");
     ImGui::DragFloat("Stiffness k##fl", &settings.pressure, 10.f, 0.f, 200000.f, "%.0f"); SYNC;
@@ -399,7 +397,6 @@ static void DrawFluidContent()
 // ─── PARTICLES ───────────────────────────────────────────────────────────────
 static void DrawParticlesContent()
 {
-    bool initbox = false;
     
     // ── Spawn ─────────────────────────────────────────────────────────────────
     Sec("Spawn");
@@ -410,81 +407,7 @@ static void DrawParticlesContent()
     ImGui::InputInt("Buffer##pt", &settings.maxparticles);
     if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
     ImGui::SetItemTooltip("GPU allocation size in particles.  Must be >= Count.  Increase before using the emitter.");
-    if (settings.spawnstate) {
-        if (ImGui::DragFloat("spawn grid x", &settings.expandx, 0.5f, settings.minX, settings.maxX)) {
-
-            float change = settings.expandx;
-            settings.mx += change;
-            settings.nx -= change;
-            settings.expandx = 0.0f;
-            if (settings.nx < settings.minX) settings.nx = settings.minX;
-            if (settings.mx > settings.maxX) settings.mx = settings.maxX;
-            if (settings.mx - settings.nx < 5.0f) {
-                settings.mx += 10.0f;
-                settings.nx -= 10.0f;
-            }
-            initbox = true;
-        }
-
-        if (ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f, settings.minY, settings.maxY)) {
-            float change = settings.expandy;
-            settings.ny -= change;
-            settings.my += change;
-            settings.expandy = 0.0f;
-            if (settings.ny < settings.minY) settings.ny = settings.minY;
-            if (settings.my > settings.maxY) settings.my = settings.maxY;
-            if (settings.my - settings.ny < 5.0f) {
-                settings.my += 10.0f;
-                settings.ny -= 10.0f;
-            }
-            initbox = true;
-        }
-
-        if (ImGui::DragFloat("spawn grid z", &settings.expandz, 0.5f, settings.minZ, settings.maxz)) {
-            float change = settings.expandz;
-            settings.nz -= change;
-            settings.mz += change;
-            settings.expandz = 0.0f;
-            if (settings.nz < settings.minZ) settings.nz = settings.minZ;
-            if (settings.mz > settings.maxz) settings.mz = settings.maxz;
-            if (settings.mz - settings.nz < 5.0f) {
-                settings.mz += 10.0f;
-                settings.nz -= 10.0f;
-            }
-            initbox = true;
-        }
-
-
-        if (ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
-            float delta = settings.movex;
-            if (settings.mx >= settings.maxX && delta > 0.0f) delta = 0.0f;
-            if (settings.nx <= settings.minX && delta < 0.0f) delta = 0.0f;
-            settings.mx += delta;
-            settings.nx += delta;
-            settings.movex = 0.0f;
-            initbox = true;
-
-        }
-        if (ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
-            float delta = settings.movey;
-            if (settings.my >= settings.maxY && delta > 0.0f) delta = 0.0f;
-            if (settings.ny <= settings.minY && delta < 0.0f) delta = 0.0f;
-            settings.my += delta;
-            settings.ny += delta;
-            settings.movey = 0.0f;
-            initbox = true;
-        }
-        if (ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
-            float delta = settings.movez;
-            if (settings.mz >= settings.maxz && delta > 0.0f) delta = 0.0f;
-            if (settings.nz <= settings.minZ && delta < 0.0f) delta = 0.0f;
-            settings.mz += delta;
-            settings.nz += delta;
-            settings.movez = 0.0f;
-            initbox = true;
-        }
-        if (initbox) { initBoundingBox(); restartSimulation(); initbox = false; }
-    }
+    
    FillBar(5.f);
 
     ImGui::Spacing();
@@ -552,7 +475,9 @@ static void DrawWorldContent()
             bchg = true;
             float diff = settings.maxX - changex;
                 settings.floorbounx += diff;
-            
+            if(settings.mx>settings.maxX ){
+                if(settings.spawnstate){  restartSimulation();}
+                settings.mx = settings.maxX;}
             initFloor();
         }
         ImGui::SetItemTooltip("Right wall X.  Drag left to shrink.");
@@ -562,6 +487,9 @@ static void DrawWorldContent()
             bchg = true;
             float diff = settings.minX - change_x;
             settings.floorboun_x += diff;
+            if(settings.nx<settings.minX ){  
+                if(settings.spawnstate){  restartSimulation();}
+                settings.nx = settings.minX;}
 
            
             initFloor();
@@ -575,6 +503,10 @@ static void DrawWorldContent()
             bchg = true;
             float diff = settings.maxY - changey;
             settings.floorbouny+= diff;
+             if(settings.my>settings.maxY ){  
+                if(settings.spawnstate){  restartSimulation();}
+                settings.my = settings.maxY;}
+
             initFloor();
         }
         ImGui::SetItemTooltip("Ceiling Y.");
@@ -584,18 +516,104 @@ static void DrawWorldContent()
             bchg = true;
             float diff = settings.minY - change_y;
             settings.floorboun_y +=diff;
+                if(settings.ny<settings.minY ){  
+                    if(settings.spawnstate){  restartSimulation();}
+                    settings.ny = settings.minY;}
             initFloor();
         }
         ImGui::SetItemTooltip("Floor Y.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        bchg |= ImGui::DragFloat("+Z##wd", &settings.maxz, 0.5f, 0.f, 2000.f, "%.0f");
+        if (ImGui::DragFloat("+Z##wd", &settings.maxz, 0.5f, 0.f, 2000.f, "%.0f")) {
+            bchg = true;
+             if(settings.mz>settings.maxz ){
+                if(settings.spawnstate){  restartSimulation();}
+                settings.mz = settings.maxz;}
+        }
+
         ImGui::SetItemTooltip("Back wall Z.");
     
         ImGui::EndTable();
     }
     if (bchg) { initBoundingBox(); syncsettings = true; }
+
+    if (settings.spawnstate) {
+            bool initbox = false;
+        if (ImGui::DragFloat("spawn grid x", &settings.expandx, 0.5f, settings.minX, settings.maxX)) {
+
+            float change = settings.expandx;
+            settings.mx += change;
+            settings.nx -= change;
+            settings.expandx = 0.0f;
+            if (settings.nx < settings.minX) settings.nx = settings.minX;
+            if (settings.mx > settings.maxX) settings.mx = settings.maxX;
+            if (settings.mx - settings.nx < 5.0f) {
+                settings.mx += 10.0f;
+                settings.nx -= 10.0f;
+             }
+            initbox = true;
+        }
+
+        if (ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f, settings.minY, settings.maxY)) {
+            float change = settings.expandy;
+            settings.ny -= change;
+            settings.my += change;
+            settings.expandy = 0.0f;
+            if (settings.ny < settings.minY) settings.ny = settings.minY;
+            if (settings.my > settings.maxY) settings.my = settings.maxY;
+            if (settings.my - settings.ny < 5.0f) {
+                settings.my += 10.0f;
+                settings.ny -= 10.0f;
+            }
+            initbox = true;
+        }
+
+        if (ImGui::DragFloat("spawn grid z", &settings.expandz, 0.5f, settings.minZ, settings.maxz)) {
+            float change = settings.expandz;
+            settings.nz -= change;
+            settings.mz += change;
+            settings.expandz = 0.0f;
+            if (settings.nz < settings.minZ) settings.nz = settings.minZ;
+            if (settings.mz > settings.maxz) settings.mz = settings.maxz;
+            if (settings.mz - settings.nz < 5.0f) {
+                settings.mz += 10.0f;
+                settings.nz -= 10.0f;
+            }
+            initbox = true;
+        }
+
+
+        if (ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
+            float delta = settings.movex;
+            if (settings.mx >= settings.maxX && delta > 0.0f) delta = 0.0f;
+            if (settings.nx <= settings.minX && delta < 0.0f) delta = 0.0f;
+            settings.mx += delta;
+            settings.nx += delta;
+            settings.movex = 0.0f;
+            initbox = true;
+
+        }
+        if (ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
+            float delta = settings.movey;
+            if (settings.my >= settings.maxY && delta > 0.0f) delta = 0.0f;
+            if (settings.ny <= settings.minY && delta < 0.0f) delta = 0.0f;
+            settings.my += delta;
+            settings.ny += delta;
+            settings.movey = 0.0f;
+            initbox = true;
+        }
+        if (ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
+            float delta = settings.movez;
+            if (settings.mz >= settings.maxz && delta > 0.0f) delta = 0.0f;
+            if (settings.nz <= settings.minZ && delta < 0.0f) delta = 0.0f;
+            settings.mz += delta;
+            settings.nz += delta;
+            settings.movez = 0.0f;
+            initbox = true;
+        }
+        if (initbox) { initBoundingBox(); restartSimulation(); initbox = false; }
+    }
 
     ImGui::Checkbox("Show bounding box##wd", &settings.boundingBox); SYNC;
 
@@ -644,7 +662,7 @@ static void DrawRenderContent()
         if (ImGui::Combo("##rnmode", &settings.shaderType, modeNames, 2)) syncsettings = true;
         ImGui::SetItemTooltip(
             "0 = Screen-space fluid surface with sky reflection,\n"
-            "    Beer-Lambert absorption, two-lobe specular.\n"
+            "    Beer-Lambert absorption, two-lobe specular, refraction.\n"
             "1 = Classic lit sphere particles.\n"
             "    Heat colour effect available.\n"
             "    Much faster — use for high particle counts.");
@@ -656,45 +674,59 @@ static void DrawRenderContent()
         Sec("Water Colour");
         if (ImGui::ColorEdit3("Shallow##rn", &settings.shallowColorR)) syncsettings = true;
         ImGui::SetItemTooltip("Colour at thin regions / fluid surface.  Visible where particles barely overlap.");
-        if (ImGui::ColorEdit3("Deep##rn", &settings.deepColorR))    syncsettings = true;
+        if (ImGui::ColorEdit3("Deep##rn", &settings.deepColorR)) syncsettings = true;
         ImGui::SetItemTooltip("Colour deep inside the fluid body.  Beer-Lambert absorption drives the transition.");
 
         Sec("Absorption");
         ImGui::SliderFloat("Coeff##rnabs", &settings.absorption, 0.1f, 8.0f, "%.2f"); SYNC;
         ImGui::SetItemTooltip(
-            "Beer-Lambert absorption coefficient.\n"
-            "0.3 = crystal-clear.   1.4 = default water.   5.0 = murky / deep ocean.");
+            "Beer-Lambert absorption scale.\n"
+            "0.3 = crystal-clear.   0.9 = default water.   5.0 = murky / deep ocean.");
 
-        Sec("Sky Reflection");
-        if (ImGui::ColorEdit3("Zenith##rn", &settings.skyZenithR))  syncsettings = true;
-        ImGui::SetItemTooltip("Sky colour directly overhead.  Sampled when reflected ray points up.");
-        if (ImGui::ColorEdit3("Horizon##rn", &settings.skyHorizonR)) syncsettings = true;
-        ImGui::SetItemTooltip("Sky colour at horizon.  Sampled when reflected ray is nearly horizontal.");
-        ImGui::SliderFloat("Strength##rnrs", &settings.reflStrength, 0.0f, 1.5f, "%.2f"); SYNC;
+        // F2: per-channel extinction
+        Sec("Extinction (RGB Beer-Lambert)");
+        if (ImGui::ColorEdit3("Extinction##rn", &settings.extinctionR)) syncsettings = true;
         ImGui::SetItemTooltip(
-            "Sky reflection intensity.\n"
-            "1.0 = physically correct.   >1.0 = exaggerated bright sky.   0.0 = no sky reflection.");
+            "Per-channel absorption coefficients.\n"
+            "High R = red absorbed quickly → ocean blue interior.\n"
+            "Lague reference: (1.8, 0.5, 0.3).\n"
+            "Multiplied with Absorption Coeff above.");
+
+        // Refraction
+        Sec("Refraction");
+        ImGui::SliderFloat("Ray March##rnref", &settings.refrMult, 0.0f, 3.0f, "%.3f"); SYNC;
+        ImGui::SetItemTooltip(
+            "Refraction ray march multiplier.\n"
+            "Scales how far the refracted ray is projected through the fluid thickness.\n"
+            "Uses full Snell's law (IOR 1.33). 0.5 = default. 0 = no refraction distortion.");
 
         Sec("Surface Blur");
-        ImGui::SliderFloat("Sigma (px)##rnbs", &settings.blurSigma, 1.0f, 1000.0f, "%.1f"); SYNC;
+        ImGui::SliderFloat("World Radius##rnbs", &settings.blurWorldRadius, 0.01f, 3.0f, "%.3f"); SYNC;
         ImGui::SetItemTooltip(
-            "Gaussian sigma in pixels for bilateral blur.\n"
-            "Higher = particles merge into a smoother surface.\n"
-            "Lower = individual particles more distinct.  2 H+V iterations, radius 8.");
-        ImGui::SliderFloat("Edge hold##rnbd", &settings.blurDepthFall, 2.0f, 600.0f, "%.1f"); SYNC;
+            "World-space bilateral kernel radius.\n"
+            "Adapts to depth — near particles get wider kernel, far ones narrower.\n"
+            "Match to approximately 1x your particle radius h. Default 0.35.");
+        ImGui::SliderFloat("Smooth Strength##rnbst", &settings.blurStrength, 0.01f, 2.0f, "%.3f"); SYNC;
         ImGui::SetItemTooltip(
-            "Bilateral depth-edge sharpness.\n"
-            "Low = blurs freely across depth boundaries.\n"
-            "High = hard surface edges.  Good range: 15-30.");
-
-    
+            "Gaussian sigma scale. Higher = broader, smoother surface.\n"
+            "Lower = individual particles more distinct. Default 0.85.");
+        ImGui::SliderFloat("Depth Falloff##rnbd", &settings.blurDiffStrength, 0.1f, 80.0f, "%.1f"); SYNC;
+        ImGui::SetItemTooltip(
+            "Depth-similarity weight. Higher = sharper fluid silhouette.\n"
+            "Lower = blur bleeds across depth discontinuities. Default 8.0.");
+        ImGui::InputInt("Max Radius (px)##rnbmr", &settings.blurMaxRadius); SYNC;
+        if (settings.blurMaxRadius < 2)  settings.blurMaxRadius = 2;
+        if (settings.blurMaxRadius > 64) settings.blurMaxRadius = 64;
+        ImGui::SetItemTooltip("Screen-space pixel radius cap. Prevents runaway kernels at close range.");
     }
+
 
     // ── Background — always visible ────────────────────────────────────────────
     Sec("Background");
     if (ImGui::ColorEdit3("BG##rn", &settings.bgColorR)) syncsettings = true;
     ImGui::SetItemTooltip("Clear colour behind the simulation.  Dark blue-grey complements water in mode 0.");
 }
+
 
 // ─── PERF ────────────────────────────────────────────────────────────────────
 static void DrawPerfContent()
