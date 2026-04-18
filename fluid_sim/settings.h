@@ -11,17 +11,17 @@ struct param {
 	float heatMultiplier = 15.0f;
 	float h = 3.70f;
 	float h2 = h * h;
-	float rest_density = 0.02400f;
-	float pressure = 2500.0f;
+	float rest_density = 0.01600f;
+	float pressure = 3000.0f;
 	float nearpressure = 407.0f;
 	float visc = 0.0090f;
-	float gravityforce = 20.0f;
+	float gravityforce = 30.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -125.0f;
 	float maxX = 125.0f;
-	float minY = -50.0f;
-	float maxY = 50.0f;
+	float minY = 0.0f;
+	float maxY = 100.0f;
 	float minZ = -50.0f;
 	float maxz = 50.0f;
 	float restitution = 0.8f;
@@ -56,8 +56,8 @@ struct param {
 	float floorbounds = 600.0f;
 	float floorbounx = floorbounds * 0.5f;
 	float floorboun_x = -floorbounds * 0.5f;
-	float floorbouny = floorbounds * 0.5f;
-	float floorboun_y = -floorbounds * 0.5f;
+	float floorbounz = floorbounds * 0.5f;
+	float floorboun_z = -floorbounds * 0.5f;
 
 	// ── Rendering ────────────────────────────────────────────────────────────
 	float gaussSigma = 4.0f;
@@ -66,44 +66,44 @@ struct param {
 	// Retune: brighter cyan edge, darker saturated deep (matches Lague reference)
 	float shallowColorR = 0.05f, shallowColorG = 0.55f, shallowColorB = 0.65f;
 	float deepColorR = 0.01f, deepColorG = 0.06f, deepColorB = 0.18f;
-	float absorption = 0.4f;
+	float absorption = 0.8f;
 
 	// DEPRECATED — kept to avoid breaking existing binary saves. Use blurWorldRadius.
 	float blurSigma = 14.0f;
 
 	
-	float blurDepthFall = 3.75f;
+	float blurDepthFall = 10.75f;
 
 	float boundsSizeX = 5.0f, boundsSizeY = 5.0f, boundsSizeZ = 5.0f;
 	float skyZenithR = 0.53f, skyZenithG = 0.81f, skyZenithB = 0.98f;
 	float skyHorizonR = 0.85f, skyHorizonG = 0.91f, skyHorizonB = 0.97f;
-	float reflStrength = 0.8f;   // unused by SSF composite — sky reflection removed
+	//float reflStrength = 0.8f;   // unused by SSF composite — sky reflection removed
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
 	// Feature 2: per-channel Beer-Lambert extinction — match Lague reference (X:1.8 Y:0.5 Z:0.3)
 	float extinctionR = 1.80f, extinctionG = 0.50f, extinctionB = 0.30f;
-	float mx = 50.0f, my = 50.0f, mz = 25.0f;
-	float nx = -50.0f, ny = -50.0f, nz = -25.0f;
+	float mx = 50.0f, mz = 50.0f, my = 75.0f;
+	float nx = -50.0f, nz = -50.0f, ny = 25.0f;
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
 	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
 
 	// DEPRECATED — replaced by full Snell's law refraction. Kept for binary compat.
-	float refrStrength = 0.018f;
+	float refrStrength = 0.008f;
 
 	// Feature 3: fake volumetric self-shadow strength — unused (shadow term removed)
-	float shadowStrength = 1.5f;
+	//float shadowStrength = 1.5f;
 
 	// -- Bilateral blur (replaces fixed blurSigma) --
-	float blurWorldRadius = 0.35f;    // world-space kernel radius
-	float blurStrength = 0.85f;    // sigma scale factor
-	float blurDiffStrength = 8.0f;     // depth-similarity falloff
-	float refrMult = 0.5f;     // refraction ray march scale
+	float blurWorldRadius = 1.3870f;    // world-space kernel radius
+	float blurStrength = 0.250f;    // sigma scale factor
+	float blurDiffStrength = 0.1f;     // depth-similarity falloff
+	float refrMult = 1.8f;     // refraction ray march scale
 
 	double fuc_ms = 0.0;
 
 	// === INT VARIABLES (4 bytes each) ===
-	int totalBodies = 30000;
+	int totalBodies = 60000;
 	int maxparticles = totalBodies * 5;
 	int count = totalBodies;
 	int min_n, max_n, avg_n = 0;
@@ -112,9 +112,9 @@ struct param {
 	int substeps = 2;
 	int fpsCount = 0;
 	int pressureMode = 0;
-	int shaderType = 1;
+	int shaderType = 0;
 	int samplen = 1;
-	int blurMaxRadius = 20;            // screen-space pixel radius cap
+	int blurMaxRadius = 32;            // screen-space pixel radius cap
 
 	// === BOOL VARIABLES (1 byte each) ===
 	bool sph = true;

@@ -5,7 +5,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include "settings.h"
-#include <cstring>  // for memcpy
+#include <cstring> // for memcpy
 
 GLint floor_uCameraPos = -1;
 GLint floor_uLightDir = -1;
@@ -24,7 +24,7 @@ GLint uColor2 = -1;
 GLint uColor3 = -1;
 GLint uColor4 = -1;
 
-const char* floorVertexShader = R"glsl(
+const char *floorVertexShader = R"glsl(
 #version 330 core
 
 layout(location = 0) in vec3 aPos;
@@ -40,7 +40,7 @@ void main() {
 }
 )glsl";
 
-const char* floorFragmentShader = R"glsl(
+const char *floorFragmentShader = R"glsl(
 #version 330 core
 
 in vec3 vPos;
@@ -69,7 +69,7 @@ float hash(vec2 p) {
 void main() {
 
     // normalize position into floor space (0 → floorSize)
-    vec2 pos = vPos.xy;
+    vec2 pos = vPos.xz;
 
     // tile coords
     vec2 tile = floor(pos / uTileSize);
@@ -79,14 +79,14 @@ void main() {
     // 🧠 quadrant selection (centered at floor center for equal quadrants)
     vec3 col;
 
-    if (pos.x > uFloorCenterX && pos.y > uFloorCenterY)
-        col = uColor1;
-    else if (pos.x < uFloorCenterX && pos.y > uFloorCenterY)
-        col = uColor2;
-    else if (pos.x < uFloorCenterX && pos.y < uFloorCenterY)
-        col = uColor3;
-    else
-        col = uColor4;
+   if (pos.x > uFloorCenterX && pos.y > uFloorCenterY)
+    col = uColor4;  // was uColor1
+else if (pos.x < uFloorCenterX && pos.y > uFloorCenterY)
+    col = uColor3;  // was uColor2
+else if (pos.x < uFloorCenterX && pos.y < uFloorCenterY)
+    col = uColor2;  // was uColor3
+else
+    col = uColor1; 
 
     // checker mix (slight variation between light/dark tiles)
     vec3 baseColor = mix(col * 1.1, col * 0.85, checker);
@@ -96,8 +96,8 @@ void main() {
     baseColor += (rnd - 0.5) * uVariation;
 
     // 🌗 lighting
-    vec3 normal = vec3(0.0, 0.0, 1.0);
-    float diff = max(dot(normal, normalize(uLightDir)), 0.2);
+    vec3 normal = vec3(0.0, 1.0, 0.0);
+    float diff = max(dot(normal, normalize(uLightDir)), 0.1);
 
     vec3 finalColor = baseColor * (0.3 + 0.7 * diff);
 
@@ -114,28 +114,38 @@ float floorverts[] = {
     0.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f
-};
+    0.0f, 0.0f, 0.0f};
 const size_t floorverts_count = sizeof(floorverts) / sizeof(float);
-extern "C" void initFloor() {
+extern "C" void initFloor()
+{
 
-    if (floorVAO) { glDeleteVertexArrays(1, &floorVAO); floorVAO = 0; }
-    if (floorVBO) { glDeleteBuffers(1, &floorVBO); floorVBO = 0; }
+    if (floorVAO)
+    {
+        glDeleteVertexArrays(1, &floorVAO);
+        floorVAO = 0;
+    }
+    if (floorVBO)
+    {
+        glDeleteBuffers(1, &floorVBO);
+        floorVBO = 0;
+    }
 
     // Calculate individual bounds from floorbounds
- 
 
     // Update vertex data with current settings
     float verts[] = {
-        // triangle 1
-        settings.floorboun_x, settings.floorboun_y, settings.minZ-1.0f,
-        settings.floorbounx, settings.floorboun_y, settings.minZ-1.0f,
-        settings.floorbounx, settings.floorbouny, settings.minZ-1.0f,
+        
 
         // triangle 2
-        settings.floorbounx, settings.floorbouny, settings.minZ-1.0f,
-        settings.floorboun_x, settings.floorbouny, settings.minZ-1.0f,
-        settings.floorboun_x, settings.floorboun_y, settings.minZ-1.0f
+        settings.floorbounx, settings.minY - 1.0f, settings.floorboun_z,
+        settings.floorboun_x, settings.minY - 1.0f, settings.floorboun_z,
+        settings.floorboun_x, settings.minY - 1.0f, settings.floorbounz,
+    
+
+        // triangle 1
+        settings.floorboun_x, settings.minY - 1.0f, settings.floorbounz,
+        settings.floorbounx, settings.minY - 1.0f, settings.floorbounz,
+        settings.floorbounx, settings.minY - 1.0f, settings.floorboun_z
     };
 
     // Copy to global array for compatibility
@@ -152,4 +162,14 @@ extern "C" void initFloor() {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
     glBindVertexArray(0);
+    GLuint err = glGetError();
+    if (err)
+    {
+        printf(" floor error %s", glGetString(err));
+    }
+    else
+    {
+
+        printf("initfloor\n");
+    }
 }

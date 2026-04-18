@@ -23,6 +23,7 @@
     <ClCompile Include="buttons.cpp" />
     <ClCompile Include="floor_render.cpp" />
     <ClCompile Include="settings.cpp" />
+    <ClCompile Include="sky.cpp" />
     <ClCompile Include="ui.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -34,16 +35,18 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\source\compute.h" />
-    <ClInclude Include="..\struct.h" />
     <ClInclude Include="buttons.h" />
     <ClInclude Include="floor.h" />
     <ClInclude Include="fluid_renderer.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="settings.h" />
+    <ClInclude Include="sky.h" />
     <ClInclude Include="ui.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\build_cuda.bat" />
+    <None Include="sky.frag" />
+    <None Include="sky.vert" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{0CFB8B9E-8BCD-7E44-A8EF-F30FC598F20D}</ProjectGuid>

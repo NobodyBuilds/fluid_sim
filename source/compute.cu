@@ -644,7 +644,7 @@ __global__ void computeDensity(
                         float invR = rsqrtf(r2 + 1e-12f);
                         float r = r2 * invR;
                         float v = h2 - r2;
-                        //  float v2 = h - r;
+                         // float v2 = h - r;
                         float vcube = v * v * v ;
 
                         float d = pollycoef6 * vcube; // precomputed pollycoef6
@@ -683,7 +683,7 @@ __global__ void computePressure(
 
     float st,
     int hs, float h2, int *cellstart, int *cellend,
-    int *particleIndex, float spikyGradv, float viscK, float pollycoef6, float minZ, float minX, float minY, float maxX, float maxY, float maxz, float rep, float dst, float pressure, float particlemass, int *ncount, float ndensity, float nrd
+    int *particleIndex, float spikyGradv, float viscK, float pollycoef6, float minZ, float minX, float minY, float maxX, float maxY, float maxz, float rep, float dst, float pressure, float particlemass, int *ncount, float ndensity
 
 )
 {
@@ -816,7 +816,7 @@ __global__ void computePressure(
 
     accl.z = (force.z + visc.z)/particlemass;
     accl.x = (force.x + visc.x)/particlemass;
-    accl.y = (force.y + visc.y)/particlemass;
+    accl.y = (force.y + visc.y )/particlemass;
     accl.w = 0.0f;
     int org = particleIndex[i]; // where this particle came from in the original unsorted array
                                 // velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy
@@ -892,19 +892,20 @@ __global__ void updateKernel(float dt, int count, float cold, float4 *pos, float
     float4 p = __ldg(&pos[i]);
     float4 vl = __ldg(&vel[i]);
     float4 a = __ldg(&acl[i]);
-
     vl.x += a.x * dt * 0.5f;
     vl.y += a.y * dt * 0.5f;
     vl.z += a.z * dt * 0.5f;
-    vl.z -= (downf/particlemass)*dt;
+    vl.y -= (downf/particlemass) *dt;
+   
+    
 
-    if (ncount[i] < 5)
+    /*if (ncount[i] < 5)
     {
         float drag = expf(-coeff * dt);
         vl.x *= drag;
         vl.y *= drag;
         vl.z *= drag;
-    }
+    }*/
 
     p.x += vl.x * dt;
     p.y += vl.y * dt;
@@ -1088,8 +1089,8 @@ __global__ void addparticles(int n, float h,
     position[k].w = 0.0f; // w used for particle density
 
     velocity[k].x = 0.0f;
-    velocity[k].y = 0.0f;
-    velocity[k].z = -150.0f;
+    velocity[k].z = 0.0f;
+    velocity[k].y = -150.0f;
 
     velocity[k].w = 0.0f; // w used for particle neardensity
 
@@ -1200,7 +1201,7 @@ extern "C" void computephysics(float dt)
                 computeDensity<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
 
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
-                computePressure<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted, velocity, deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.wallrep, settings.walldst, settings.pressure, settings.particleMass, ncount, settings.ndensity, settings.nearRestDensity);
+                computePressure<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted, velocity, deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.wallrep, settings.walldst, settings.pressure, settings.particleMass, ncount, settings.ndensity);
             }
         }
         // DEBUG INFO not always active

@@ -38,6 +38,7 @@
 #include <iostream>
 #include "settings.h"
 #include <cmath>
+#include "sky.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PASS 1 — DEPTH  (shared vertex shader for depth + thickness passes)
@@ -93,8 +94,9 @@ in float vRadius;
 out float outThickness;
 void main(){
     float r2 = dot(vOffset,vOffset);
-    if(r2 > 1.0) discard;
-    outThickness = 0.1;
+    if(r2 > 1.0) {discard;}
+  //  outThickness = 0.1;
+ outThickness = 2.0 * sqrt(max(1.0 - r2, 0.0)) * vRadius;
 }
 )glsl";
 
@@ -128,11 +130,11 @@ static const char* SSF_PACK_FRAG = R"glsl(
 uniform sampler2D uDepthTex;
 uniform sampler2D uThickTex;
 in  vec2 vUV;
-out vec4 outPacked;
+out vec4 outPacked1;
 void main(){
     float depth = texture(uDepthTex, vUV).r;
     float thick = texture(uThickTex, vUV).r;
-    outPacked = vec4(depth, thick, 0.0, depth);
+    outPacked1 = vec4(depth, thick, 0.0, depth);
 }
 )glsl";
 
@@ -167,6 +169,7 @@ uniform vec2      uBlurDir;
 uniform float     uBlurWorldRadius;
 uniform float     uBlurStrength;
 uniform float     uBlurDiffStrength;
+ uniform float uBlurParticleRadius;
 uniform int       uBlurMaxRadius;
 uniform float     uProjScale;
 in  vec2 vUV;
@@ -174,17 +177,14 @@ out vec4 outPacked;
 
 void main(){
     vec4 center = texture(uPackTex, vUV);
-    float depth = center.a;   // hard depth — never changes
+    float depth = center.a;   // hard depth -- never changes
 
-    // Background pixel — skip blur, pass through unchanged
+    // Background pixel -- skip blur, pass through unchanged
     if(depth >= 10000.0){
         outPacked = center;
         return;
     }
-    if(depth < 0.001){
-        outPacked = center;
-        return;
-    }
+    if(depth < 0.001){    outPacked = center; return; }
 
     // Compute screen-space kernel radius from world-space radius at this depth
     float pxPerUnit  = uProjScale / depth;
@@ -206,10 +206,12 @@ void main(){
     for(int x = -radius; x <= radius; x++){
         vec4  s = texture(uPackTex, vUV + texelDelta * float(x));
 
-        // Depth difference uses hard depth (.a) — the reference that never blurs
+        // Depth difference uses hard depth (.a) -- the reference that never blurs
         float centreDiff = depth - s.a;
-        float diffWeight = exp(-centreDiff * centreDiff * uBlurDiffStrength);
-        float w          = exp(-float(x*x) / (2.0*sigma*sigma)) * diffWeight;
+  float normDiff   = centreDiff / (2.0 * uBlurParticleRadius + 0.001);
+  float bgGuard    = step(0.001, s.a);
+  float diffWeight = bgGuard * exp(-normDiff * normDiff * uBlurDiffStrength);
+  float w          = exp(-float(x*x) / (2.0*sigma*sigma)) * diffWeight;
 
         sum  += s * w;
         wSum += w;
@@ -253,15 +255,18 @@ uniform vec3  uExtinction;
 uniform float uTanHalfFov;
 uniform float uAspect;
 uniform mat4  uProj;             // projection matrix (for refraction exit projection)
-uniform float uRefrMult;         // refraction ray march multiplier
+uniform float uRefrMult; 
+        // refraction ray march multiplier
+  uniform vec3 uWaterShallow;   // shallow water tint (RGB 0-1)
+  uniform vec3 uWaterDeep;      // deep water tint (RGB 0-1)
 
 in  vec2 vUV;
 out vec4 outColor;
 
 // Unproject UV + positive linear depth to view-space position
 vec3 toView(vec2 uv, float d){
-    vec2 ndc = uv*2.0-1.0;
-    return vec3(ndc*vec2(uAspect,1.0)*uTanHalfFov*d, -d);
+  vec2 ndc = uv * 2.0 - 1.0;
+   return vec3(ndc*vec2(uAspect,1.0)*uTanHalfFov*d, -d);
 }
 
 // Full Fresnel reflectance (Fresnel equations), IOR water=1.33
@@ -279,82 +284,74 @@ float calcFresnel(vec3 incident, vec3 N, float iorA, float iorB){
 // Full Snell's law refraction direction in view space.
 // Returns vec3(0) on total internal reflection.
 vec3 calcRefract(vec3 incident, vec3 N, float iorA, float iorB){
-    float r     = iorA / iorB;
-    float cosI  = clamp(-dot(incident, N), 0.0, 1.0);
+    float r = iorA / iorB;
+    float cosI = clamp(-dot(incident, N), 0.0, 1.0);
     float sinSqT = r * r * (1.0 - cosI * cosI);
-    if(sinSqT > 1.0) {
-return vec3(0.0);
-}
-    return r * incident + (r * cosI - sqrt(1.0 - sinSqT)) * N;
+
+    if (sinSqT > 1.0) {
+        return vec3(0.0);
+    }
+
+    float cosT = sqrt(1.0 - sinSqT);
+    return r * incident + (r * cosI - cosT) * N;
 }
 
-// Normal reconstruction — Unity NormalsFromDepth approach.
+// Normal reconstruction -- Unity NormalsFromDepth approach.
 // Single-texel offsets. Picks smaller-Z-delta finite difference per axis.
 // Hard depth (.a) used for neighbour validity; smooth depth (.r) for positions.
-vec3 reconstructNormal(vec2 uv, float filtD){
+vec3 reconstructNormal(vec2 uv, float filtD) {
     vec2 ox = vec2(uTexelSize.x, 0.0);
     vec2 oy = vec2(0.0, uTexelSize.y);
-
-    float dRh = texture(uPackTex, uv + ox).a;
-    float dLh = texture(uPackTex, uv - ox).a;
-    float dUh = texture(uPackTex, uv + oy).a;
-    float dDh = texture(uPackTex, uv - oy).a;
-
-    float dRs = texture(uPackTex, uv + ox).r;
-    float dLs = texture(uPackTex, uv - ox).r;
-    float dUs = texture(uPackTex, uv + oy).r;
-    float dDs = texture(uPackTex, uv - oy).r;
-
-    vec3 posC = toView(uv, filtD);
-
-    // X axis: pick forward or backward diff with smaller Z delta
-    vec3 ddx, ddx2;
-    if(dRh > 0.001 && dLh > 0.001){
-        ddx  = toView(uv + ox, dRs) - posC;
-        ddx2 = posC - toView(uv - ox, dLs);
-        if(abs(ddx2.z) < abs(ddx.z)) ddx = ddx2;
-    } else if(dRh > 0.001){
-        ddx = toView(uv + ox, dRs) - posC;
-    } else {
-        ddx = posC - toView(uv - ox, dLs);
-    }
-
-    // Y axis
-    vec3 ddy, ddy2;
-    if(dUh > 0.001 && dDh > 0.001){
-        ddy  = toView(uv + oy, dUs) - posC;
-        ddy2 = posC - toView(uv - oy, dDs);
-        if(abs(ddy2.z) < abs(ddy.z)) ddy = ddy2;
-    } else if(dUh > 0.001){
-        ddy = toView(uv + oy, dUs) - posC;
-    } else {
-        ddy = posC - toView(uv - oy, dDs);
-    }
-
-    // NOTE order: ddy first, then ddx (matches Unity NormalsFromDepth)
-    vec3 N = normalize(cross(ddy, ddx));
-    if(N.z < 0.0) N = -N;   // guarantee faces camera in view space
+    float d00 = texture(uPackTex, uv - ox - oy).r;
+    float d10 = texture(uPackTex, uv      - oy).r;
+    float d20 = texture(uPackTex, uv + ox - oy).r;
+    float d01 = texture(uPackTex, uv - ox     ).r;
+    float d21 = texture(uPackTex, uv + ox     ).r;
+    float d02 = texture(uPackTex, uv - ox + oy).r;
+    float d12 = texture(uPackTex, uv      + oy).r;
+    float d22 = texture(uPackTex, uv + ox + oy).r;
+    float h00 = step(0.001, texture(uPackTex, uv - ox - oy).a);
+    float h20 = step(0.001, texture(uPackTex, uv + ox - oy).a);
+    float h02 = step(0.001, texture(uPackTex, uv - ox + oy).a);
+    float h22 = step(0.001, texture(uPackTex, uv + ox + oy).a);
+    float gx = (-d00*h00 + d20*h20) + 2.0*(-d01 + d21)
+              + (-d02*h02 + d22*h22);
+    float gy = (-d00*h00 - d20*h20) + 2.0*(-d10 + d12)
+              + ( d02*h02 + d22*h22);
+    // Correct normal from Sobel depth gradient.
+    // Sobel kernel sums to 8× per-texel change; UV→view_x has 2× from NDC mapping.
+    // Combined factor: 16 * texelSize.x * aspect * scale, where scale = depth * tanHalfFov.
+    // Previous bug: Z was "2.0 * uTexelSize.x" (≈0.001), making every normal near-horizontal
+    // → Fresnel ≈ 1.0 everywhere → full white. Fixed below.
+    float scale = filtD * uTanHalfFov;
+    vec3 N = normalize(vec3(-gx,
+                           -gy,
+                            16.0 * uTexelSize.x * uAspect * scale));
+    if(N.z < 0.0) N = -N;
     return N;
 }
 
-void main(){
-    vec4 packed    = texture(uPackTex, vUV);
-    float hardDepth  = packed.a;
-    float filtDepth = packed.r;
-    float thick      = clamp(packed.g, 0.0, 8.0);
 
-    // Early out — use hard depth to avoid false hits from blur bleed
-    if(hardDepth < 0.001) discard;
+void main(){
+    vec4 packedtex    = texture(uPackTex, vUV);
+    float hardDepth  = packedtex.a;
+    float filtDepth = packedtex.r;
+    float thick      = clamp(packedtex.g, 0.0, 8.0);
+
+    // Early out -- use hard depth to avoid false hits from blur bleed
+    if(hardDepth < 0.001){
+     discard;
+    }
 
     vec3 posV = toView(vUV, filtDepth);
     vec3 N    = reconstructNormal(vUV, filtDepth);
     vec3 V    = normalize(-posV);   // toward camera
 
-    // ── Full Fresnel (IOR 1.0 → 1.33) ────────────────────────────────────────
+    // -- Full Fresnel (IOR 1.0 -> 1.33) ----------------------------------------
     vec3 incident = -V;
     float fresnel = calcFresnel(incident, N, 1.0, 1.33);
 
-    // ── Full Snell's law refraction ───────────────────────────────────────────
+    // -- Full Snell's law refraction -------------------------------------------
     vec3 refractDir = calcRefract(incident, N, 1.0, 1.33);
 
     vec2 refrUV;
@@ -366,34 +363,38 @@ void main(){
         refrUV = clipExit.xy / clipExit.w * 0.5 + 0.5;
         refrUV = clamp(refrUV, vec2(0.001), vec2(0.999));
     } else {
-        refrUV = vUV;   // TIR — sample straight through
+        refrUV = vUV;   // TIR -- sample straight through
     }
     vec3 sceneCol = texture(uSceneTex, refrUV).rgb;
 
-    // ── Beer-Lambert per channel ──────────────────────────────────────────────
-    vec3 extinction    = max(uExtinction, vec3(0.001));
-    vec3 transmittance = exp(-uAbsorption * extinction * thick);
+    vec3  extinction    = max(uExtinction, vec3(0.001));
+  // sqrt-compress thickness to level additive-blend humps
+  float thickComp    = sqrt(clamp(thick, 0.0, 8.0));
+  vec3  transmittance = exp(-uAbsorption * extinction * thickComp);
 
-    // ── Body colour ───────────────────────────────────────────────────────────
-    vec3 bodyCol = transmittance;
+  // Water tint: interpolate shallow<->deep by per-channel transmittance
+  vec3 waterTint = mix(uWaterDeep, uWaterShallow, transmittance);
 
-    // ── Basic NdL diffuse + ambient (lighting placeholder) ────────────────────
-    float NdL    = max(dot(N, uLightDirView), 0.0);
-    vec3  ambient = bodyCol * 0.15;
-    vec3  diffuse = bodyCol * NdL * (1.0 - fresnel);
+  // Surface lighting — independent of transmittance
+  float NdL        = max(dot(N, uLightDirView), 0.0);
+  vec3  surfLight  = waterTint * (NdL * (1.0 - fresnel) + 0.15);
 
-    // ── Final composite (no sky reflection, no specular, no SSS, no shadow) ───
-    vec3 refracted = sceneCol * transmittance + (ambient + diffuse) * (1.0 - transmittance);
-    vec3 col       = refracted;
+  // Correct composite: background attenuated + fluid body fills the rest
+  vec3 refracted   = sceneCol * transmittance + surfLight * (1.0 - transmittance);
 
-    outColor = vec4(col, 1.0);
+  // Fresnel sky reflection — use actual sky blue, not near-white.
+  // Old: mix(..., vec3(0.85,0.90,0.95), fresnel*0.6) — essentially a white mirror.
+  vec3 col = mix(refracted, vec3(0.50, 0.65, 0.85), fresnel * 0.35);
+  outColor = vec4(col, 1.0);
+
 }
 )glsl";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Cached uniform locations
 // ═══════════════════════════════════════════════════════════════════════════════
-struct SSFUniforms {
+struct SSFUniforms
+{
     // depth pass
     GLint depth_uProj = -1, depth_uView = -1;
     // thickness pass
@@ -404,6 +405,7 @@ struct SSFUniforms {
     GLint blur_uPackTex = -1, blur_uTexelSize = -1, blur_uBlurDir = -1;
     GLint blur_uBlurWorldRadius = -1, blur_uBlurStrength = -1;
     GLint blur_uBlurDiffStrength = -1, blur_uBlurMaxRadius = -1, blur_uProjScale = -1;
+    GLint blur_uBlurParticleRadius = -1;
     // composite pass
     GLint comp_uPackTex = -1, comp_uSceneTex = -1, comp_uTexelSize = -1;
     GLint comp_uLightDirView = -1;
@@ -412,18 +414,20 @@ struct SSFUniforms {
     GLint comp_uTanHalfFov = -1, comp_uAspect = -1;
     GLint comp_uProj = -1;
     GLint comp_uRefrMult = -1;
+    GLint comp_uWaterShallow = -1, comp_uWaterDeep = -1;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  FluidRenderer
 // ═══════════════════════════════════════════════════════════════════════════════
-struct FluidRenderer {
+struct FluidRenderer
+{
     // FBOs
-    GLuint depthFBO = 0;   // Pass 1: depth colour + hardware depth RBO
-    GLuint thickFBO = 0;   // Pass 2: additive thickness
+    GLuint depthFBO = 0;  // Pass 1: depth colour + hardware depth RBO
+    GLuint thickFBO = 0;  // Pass 2: additive thickness
     GLuint packFBO = 0;   // Pass 3: packed RGBA32F (depth, thick, 0, hardDepth)
-    GLuint blurFBO_A = 0;   // Blur ping  (RGBA32F)
-    GLuint blurFBO_B = 0;   // Blur pong  (RGBA32F)
+    GLuint blurFBO_A = 0; // Blur ping  (RGBA32F)
+    GLuint blurFBO_B = 0; // Blur pong  (RGBA32F)
 
     // Textures
     GLuint depthTex = 0;
@@ -431,8 +435,8 @@ struct FluidRenderer {
     GLuint packTex = 0;
     GLuint blurTexA = 0;
     GLuint blurTexB = 0;
-    GLuint sceneTex = 0;   // copy of the scene behind the fluid
-    GLuint depthRBO = 0;   // hardware depth renderbuffer for Pass 1
+    GLuint sceneTex = 0; // copy of the scene behind the fluid
+    GLuint depthRBO = 0; // hardware depth renderbuffer for Pass 1
 
     // Programs
     GLuint depthProg = 0;
@@ -444,7 +448,7 @@ struct FluidRenderer {
     GLuint quadVAO = 0, quadVBO = 0;
     SSFUniforms u;
 
-    int  width = 0, height = 0;
+    int width = 0, height = 0;
     bool ready = false;
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -466,10 +470,10 @@ private:
     GLuint makeRGBA32FFBO(int w, int h, GLuint& texOut);
     GLuint compileShader(GLenum type, const char* src);
     GLuint linkProgram(const char* vs, const char* fs);
-    void   initQuad();
-    void   cacheUniforms();
-    void   destroyBuffers();
-    void   captureSceneColor();
+    void initQuad();
+    void cacheUniforms();
+    void destroyBuffers();
+    void captureSceneColor();
 
     void passDepth(GLuint vao, int n, const glm::mat4& proj, const glm::mat4& view);
     void passThickness(GLuint vao, int n, const glm::mat4& proj, const glm::mat4& view);
@@ -486,35 +490,52 @@ private:
 //  Implementation
 // ═══════════════════════════════════════════════════════════════════════════════
 
-inline GLuint FluidRenderer::compileShader(GLenum type, const char* src) {
+inline GLuint FluidRenderer::compileShader(GLenum type, const char* src)
+{
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, nullptr); glCompileShader(s);
-    GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char b[2048]; glGetShaderInfoLog(s, 2048, nullptr, b);
-        std::cerr << "[FluidRenderer] compile:\n" << b << "\n";
+    glShaderSource(s, 1, &src, nullptr);
+    glCompileShader(s);
+    GLint ok;
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok)
+    {
+        char b[2048];
+        glGetShaderInfoLog(s, 2048, nullptr, b);
+        std::cerr << "[FluidRenderer] compile:\n"
+            << b << "\n";
     }
     return s;
 }
 
-inline GLuint FluidRenderer::linkProgram(const char* vs, const char* fs) {
+inline GLuint FluidRenderer::linkProgram(const char* vs, const char* fs)
+{
     GLuint a = compileShader(GL_VERTEX_SHADER, vs);
     GLuint b = compileShader(GL_FRAGMENT_SHADER, fs);
     GLuint p = glCreateProgram();
-    glAttachShader(p, a); glAttachShader(p, b); glLinkProgram(p);
-    GLint ok; glGetProgramiv(p, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char buf[2048]; glGetProgramInfoLog(p, 2048, nullptr, buf);
-        std::cerr << "[FluidRenderer] link:\n" << buf << "\n";
+    glAttachShader(p, a);
+    glAttachShader(p, b);
+    glLinkProgram(p);
+    GLint ok;
+    glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if (!ok)
+    {
+        char buf[2048];
+        glGetProgramInfoLog(p, 2048, nullptr, buf);
+        std::cerr << "[FluidRenderer] link:\n"
+            << buf << "\n";
     }
-    glDeleteShader(a); glDeleteShader(b);
+    glDeleteShader(a);
+    glDeleteShader(b);
     return p;
 }
 
-inline GLuint FluidRenderer::makeR32FFBO(int w, int h, GLuint& texOut) {
+inline GLuint FluidRenderer::makeR32FFBO(int w, int h, GLuint& texOut)
+{
     GLuint fbo;
-    glGenFramebuffers(1, &fbo); glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glGenTextures(1, &texOut);  glBindTexture(GL_TEXTURE_2D, texOut);
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glGenTextures(1, &texOut);
+    glBindTexture(GL_TEXTURE_2D, texOut);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, w, h, 0, GL_RED, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -525,10 +546,13 @@ inline GLuint FluidRenderer::makeR32FFBO(int w, int h, GLuint& texOut) {
     return fbo;
 }
 
-inline GLuint FluidRenderer::makeRGBA32FFBO(int w, int h, GLuint& texOut) {
+inline GLuint FluidRenderer::makeRGBA32FFBO(int w, int h, GLuint& texOut)
+{
     GLuint fbo;
-    glGenFramebuffers(1, &fbo); glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glGenTextures(1, &texOut);  glBindTexture(GL_TEXTURE_2D, texOut);
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glGenTextures(1, &texOut);
+    glBindTexture(GL_TEXTURE_2D, texOut);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -539,9 +563,11 @@ inline GLuint FluidRenderer::makeRGBA32FFBO(int w, int h, GLuint& texOut) {
     return fbo;
 }
 
-inline void FluidRenderer::initQuad() {
-    float v[] = { -1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1 };
-    glGenVertexArrays(1, &quadVAO); glGenBuffers(1, &quadVBO);
+inline void FluidRenderer::initQuad()
+{
+    float v[] = { -1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1 };
+    glGenVertexArrays(1, &quadVAO);
+    glGenBuffers(1, &quadVBO);
     glBindVertexArray(quadVAO);
     glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
@@ -550,7 +576,8 @@ inline void FluidRenderer::initQuad() {
     glBindVertexArray(0);
 }
 
-inline void FluidRenderer::cacheUniforms() {
+inline void FluidRenderer::cacheUniforms()
+{
     // depth
     u.depth_uProj = glGetUniformLocation(depthProg, "uProj");
     u.depth_uView = glGetUniformLocation(depthProg, "uView");
@@ -567,6 +594,7 @@ inline void FluidRenderer::cacheUniforms() {
     u.blur_uBlurWorldRadius = glGetUniformLocation(blurProg, "uBlurWorldRadius");
     u.blur_uBlurStrength = glGetUniformLocation(blurProg, "uBlurStrength");
     u.blur_uBlurDiffStrength = glGetUniformLocation(blurProg, "uBlurDiffStrength");
+    u.blur_uBlurParticleRadius = glGetUniformLocation(blurProg, "uBlurParticleRadius");
     u.blur_uBlurMaxRadius = glGetUniformLocation(blurProg, "uBlurMaxRadius");
     u.blur_uProjScale = glGetUniformLocation(blurProg, "uProjScale");
     // composite
@@ -580,9 +608,13 @@ inline void FluidRenderer::cacheUniforms() {
     u.comp_uAspect = glGetUniformLocation(compositeProg, "uAspect");
     u.comp_uProj = glGetUniformLocation(compositeProg, "uProj");
     u.comp_uRefrMult = glGetUniformLocation(compositeProg, "uRefrMult");
+    u.comp_uWaterShallow = glGetUniformLocation(compositeProg, "uWaterShallow");
+    u.comp_uWaterDeep = glGetUniformLocation(compositeProg, "uWaterDeep");
+
 }
 
-inline void FluidRenderer::destroyBuffers() {
+inline void FluidRenderer::destroyBuffers()
+{
     GLuint fbos[] = { depthFBO, thickFBO, packFBO, blurFBO_A, blurFBO_B };
     GLuint texs[] = { depthTex, thickTex, packTex, blurTexA, blurTexB, sceneTex };
     glDeleteFramebuffers(5, fbos);
@@ -592,8 +624,10 @@ inline void FluidRenderer::destroyBuffers() {
     depthTex = thickTex = packTex = blurTexA = blurTexB = sceneTex = depthRBO = 0;
 }
 
-inline void FluidRenderer::init(int w, int h) {
-    width = w; height = h;
+inline void FluidRenderer::init(int w, int h)
+{
+    width = w;
+    height = h;
 
     depthProg = linkProgram(SSF_DEPTH_VERT, SSF_DEPTH_FRAG);
     thickProg = linkProgram(SSF_DEPTH_VERT, SSF_THICK_FRAG);
@@ -603,15 +637,18 @@ inline void FluidRenderer::init(int w, int h) {
     cacheUniforms();
 
     // Depth FBO: R32F colour + hardware depth renderbuffer
-    glGenFramebuffers(1, &depthFBO); glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
-    glGenTextures(1, &depthTex);     glBindTexture(GL_TEXTURE_2D, depthTex);
+    glGenFramebuffers(1, &depthFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
+    glGenTextures(1, &depthTex);
+    glBindTexture(GL_TEXTURE_2D, depthTex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, w, h, 0, GL_RED, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, depthTex, 0);
-    glGenRenderbuffers(1, &depthRBO); glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
+    glGenRenderbuffers(1, &depthRBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRBO);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -632,19 +669,30 @@ inline void FluidRenderer::init(int w, int h) {
     ready = true;
 }
 
-inline void FluidRenderer::resize(int w, int h) {
-    if (!ready) { width = w; height = h; return; }
-    destroyBuffers(); width = w; height = h;
+inline void FluidRenderer::resize(int w, int h)
+{
+    if (!ready)
+    {
+        width = w;
+        height = h;
+        return;
+    }
+    destroyBuffers();
+    width = w;
+    height = h;
 
-    glGenFramebuffers(1, &depthFBO); glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
-    glGenTextures(1, &depthTex);     glBindTexture(GL_TEXTURE_2D, depthTex);
+    glGenFramebuffers(1, &depthFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
+    glGenTextures(1, &depthTex);
+    glBindTexture(GL_TEXTURE_2D, depthTex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, w, h, 0, GL_RED, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, depthTex, 0);
-    glGenRenderbuffers(1, &depthRBO); glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
+    glGenRenderbuffers(1, &depthRBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRBO);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -665,46 +713,69 @@ inline void FluidRenderer::resize(int w, int h) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 inline void FluidRenderer::passDepth(GLuint vao, int n,
-    const glm::mat4& proj, const glm::mat4& view) {
+    const glm::mat4& proj, const glm::mat4& view)
+{
     glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
     glViewport(0, 0, width, height);
-    glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDisable(GL_BLEND);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDisable(GL_BLEND);
     glUseProgram(depthProg);
     glUniformMatrix4fv(u.depth_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniformMatrix4fv(u.depth_uView, 1, GL_FALSE, glm::value_ptr(view));
-    glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES, 0, n * 3); glBindVertexArray(0);
-    glUseProgram(0); glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLES, 0, n * 3);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 inline void FluidRenderer::passThickness(GLuint vao, int n,
-    const glm::mat4& proj, const glm::mat4& view) {
+    const glm::mat4& proj, const glm::mat4& view)
+{
     glBindFramebuffer(GL_FRAMEBUFFER, thickFBO);
     glViewport(0, 0, width, height);
-    glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
-    glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND); glBlendFunc(GL_ONE, GL_ONE);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
     glUseProgram(thickProg);
     glUniformMatrix4fv(u.thick_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniformMatrix4fv(u.thick_uView, 1, GL_FALSE, glm::value_ptr(view));
-    glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES, 0, n * 3); glBindVertexArray(0);
-    glUseProgram(0); glDisable(GL_BLEND); glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLES, 0, n * 3);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glDisable(GL_BLEND);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-inline void FluidRenderer::passPack() {
+inline void FluidRenderer::passPack()
+{
     glBindFramebuffer(GL_FRAMEBUFFER, packFBO);
     glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT);
-    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
     glUseProgram(packProg);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, depthTex);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, thickTex);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, depthTex);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, thickTex);
     glUniform1i(u.pack_uDepthTex, 0);
     glUniform1i(u.pack_uThickTex, 1);
-    glBindVertexArray(quadVAO); glDrawArrays(GL_TRIANGLES, 0, 6); glBindVertexArray(0);
-    glUseProgram(0); glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-inline void FluidRenderer::captureSceneColor() {
+inline void FluidRenderer::captureSceneColor()
+{
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, sceneTex);
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
@@ -712,27 +783,36 @@ inline void FluidRenderer::captureSceneColor() {
 
 // Single separable blur pass — src (RGBA32F) → dst (RGBA32F)
 inline void FluidRenderer::runBlurPass(GLuint srcTex, GLuint dstFBO,
-    float dx, float dy, float projScale) {
+    float dx, float dy, float projScale)
+{
     glBindFramebuffer(GL_FRAMEBUFFER, dstFBO);
-    glViewport(0, 0, width, height); glClear(GL_COLOR_BUFFER_BIT);
-    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND);
+    glViewport(0, 0, width, height);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
     glUseProgram(blurProg);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, srcTex);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, srcTex);
     glUniform1i(u.blur_uPackTex, 0);
     glUniform2f(u.blur_uTexelSize, 1.0f / width, 1.0f / height);
     glUniform2f(u.blur_uBlurDir, dx, dy);
     glUniform1f(u.blur_uBlurWorldRadius, settings.blurWorldRadius);
     glUniform1f(u.blur_uBlurStrength, settings.blurStrength);
     glUniform1f(u.blur_uBlurDiffStrength, settings.blurDiffStrength);
+    glUniform1f(u.blur_uBlurParticleRadius, settings.size);
     glUniform1i(u.blur_uBlurMaxRadius, settings.blurMaxRadius);
     glUniform1f(u.blur_uProjScale, projScale);
-    glBindVertexArray(quadVAO); glDrawArrays(GL_TRIANGLES, 0, 6); glBindVertexArray(0);
-    glUseProgram(0); glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 // Pack then 4 blur passes (2 H+V iterations).  Final result in blurTexB.
 //   packTex →H→ blurTexA →V→ blurTexB →H→ blurTexA →V→ blurTexB
-inline void FluidRenderer::passBlur(const glm::mat4& proj) {
+inline void FluidRenderer::passBlur(const glm::mat4& proj)
+{
     // projScale = (screenWidth * P[0][0]) / 2
     // glm column-major: proj[col][row], so proj[0][0] = element (0,0) of perspective matrix
     float projM00 = proj[0][0];
@@ -740,26 +820,30 @@ inline void FluidRenderer::passBlur(const glm::mat4& proj) {
 
     passPack();
     runBlurPass(packTex, blurFBO_A, 1, 0, projScale);  // it1 H
-    runBlurPass(blurTexA, blurFBO_B, 0, 1, projScale);  // it1 V
-    runBlurPass(blurTexB, blurFBO_A, 1, 0, projScale);  // it2 H
-    runBlurPass(blurTexA, blurFBO_B, 0, 1, projScale);  // it2 V  ← final in blurTexB
+    runBlurPass(blurTexA, blurFBO_B, 0, 1, projScale); // it1 V
+    runBlurPass(blurTexB, blurFBO_A, 1, 0, projScale); // it2 H
+    runBlurPass(blurTexA, blurFBO_B, 0, 1, projScale); // it2 V  ← final in blurTexB
 }
 
 inline void FluidRenderer::passComposite(const glm::vec3& lightDirView,
     float fovDeg, float aspect,
-    const glm::mat4& proj) {
+    const glm::mat4& proj)
+{
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
     captureSceneColor();
-    glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
 
     float tanHalf = tanf(glm::radians(fovDeg * 0.5f));
 
     glUseProgram(compositeProg);
 
     // blurTexB = RGBA32F packed (smoothDepth, smoothThick, 0, hardDepth)
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, blurTexB);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, sceneTex);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, blurTexB);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, sceneTex);
 
     glUniform1i(u.comp_uPackTex, 0);
     glUniform1i(u.comp_uSceneTex, 2);
@@ -772,8 +856,15 @@ inline void FluidRenderer::passComposite(const glm::vec3& lightDirView,
     glUniform1f(u.comp_uAspect, aspect);
     glUniformMatrix4fv(u.comp_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniform1f(u.comp_uRefrMult, settings.refrMult);
+    glUniform3f(u.comp_uWaterShallow,
+        settings.shallowColorR / 255.f, settings.shallowColorG / 255.f, settings.shallowColorB / 255.f);
+    glUniform3f(u.comp_uWaterDeep,
+        settings.deepColorR / 255.f, settings.deepColorG / 255.f, settings.deepColorB / 255.f);
 
-    glBindVertexArray(quadVAO); glDrawArrays(GL_TRIANGLES, 0, 6); glBindVertexArray(0);
+
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
     glUseProgram(0);
 }
 
@@ -781,13 +872,16 @@ inline bool FluidRenderer::render(GLuint particleVAO, int particleCount,
     const glm::mat4& proj, const glm::mat4& view,
     int shaderType,
     const glm::vec3& lightDirWorld,
-    float fovDegrees, float aspect) {
+    float fovDegrees, float aspect)
+{
     // Legacy particles: return false so drawAll() uses the original program
-    if (shaderType == 1) {
+    if (shaderType == 1)
+    {
         settings.heateffect = true;
         return false;
     }
-    if (!ready || particleCount <= 0) return false;
+    if (!ready || particleCount <= 0)
+        return false;
 
     // Heat colouring is invisible under the continuous SSF surface
     settings.heateffect = false;
@@ -803,12 +897,23 @@ inline bool FluidRenderer::render(GLuint particleVAO, int particleCount,
     return true;
 }
 
-inline void FluidRenderer::cleanup() {
+inline void FluidRenderer::cleanup()
+{
     destroyBuffers();
-    if (quadVAO) { glDeleteVertexArrays(1, &quadVAO); quadVAO = 0; }
-    if (quadVBO) { glDeleteBuffers(1, &quadVBO);       quadVBO = 0; }
+    if (quadVAO)
+    {
+        glDeleteVertexArrays(1, &quadVAO);
+        quadVAO = 0;
+    }
+    if (quadVBO)
+    {
+        glDeleteBuffers(1, &quadVBO);
+        quadVBO = 0;
+    }
     GLuint progs[] = { depthProg, thickProg, packProg, blurProg, compositeProg };
-    for (GLuint p : progs) if (p) glDeleteProgram(p);
+    for (GLuint p : progs)
+        if (p)
+            glDeleteProgram(p);
     depthProg = thickProg = packProg = blurProg = compositeProg = 0;
     ready = false;
 }

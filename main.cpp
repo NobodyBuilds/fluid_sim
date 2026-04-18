@@ -29,6 +29,7 @@
 #include "fluid_sim/buttons.h"
 
 #include "fluid_sim/floor.h"
+#include"fluid_sim/sky.h"
 #define _USE_MATH_DEFINES
 
 // param settings;
@@ -49,7 +50,7 @@ static int fuc_samples = 0;
 struct View
 {
     float cx = screenWidth * 0.5f;
-    float cy = screenHeight * 0.5f;
+    float cz = screenHeight * 0.5f;
     float height = (float)screenHeight;
     float aspect = (float)screenWidth / (float)screenHeight;
     float zoom = 1.0f;
@@ -58,12 +59,12 @@ struct View
 
 struct Camera
 {
-    glm::vec3 position = glm::vec3(0.0f, -200.0f, 21.0f); // cinematic 3D
+    glm::vec3 position = glm::vec3(0.0f, 75.0f, 200.0f); // cinematic 3D
     glm::vec3 forward;
     glm::vec3 right;
     glm::vec3 up;
 
-    float yaw = 90.0f;    // diagonal
+    float yaw = -90.0f;    // diagonal
     float pitch = -15.0f; // looking down
     float fov = 70.0f;
 };
@@ -90,9 +91,8 @@ struct GLVertex
 };
 
 // CHANGE: OpenGL resources
-GLuint vao = 0, vbo = 0, ibo = 0;
+GLuint vao = 0, vbo = 0;
 size_t vbo_capacity = 0;
-size_t ibo_capacity = 0;
 GLuint program = 0;
 GLuint bboxProgram = 0;
 GLuint bboxVAO = 0;
@@ -133,7 +133,6 @@ layout(location = 0) in vec3 inCenterWorld;
 layout(location = 1) in float inRadius;
 layout(location = 2) in vec4 inColor;
 layout(location = 3) in vec2 inOffset;
-layout(location = 4) in float inHeat;   // b.heat ∈ [0,100]
 
 uniform mat4 uProj;
 uniform mat4 uView;
@@ -141,7 +140,7 @@ uniform vec3 uCameraPos;
 
 out vec4 vColor;
 out vec2 vOffset;
-out float vHeat;
+
 out vec3 vworld;
 out vec3 vpos;
 void main() {
@@ -156,7 +155,7 @@ void main() {
 
     vColor = inColor;
     vOffset = inOffset; // ✅ FIXED
- vHeat   = inHeat;
+ 
 vworld = uCameraPos;
 vpos=worldPos;
 }
@@ -169,7 +168,7 @@ const char *fragmentShaderSource = R"glsl(
 
 in vec2 vOffset;
 in vec4 vColor;
-in float vHeat;
+
 in vec3 vworld;
 in vec3 vpos;
 out vec4 FragColor;
@@ -183,20 +182,16 @@ void main() {
     if (r2 > 1.0) discard;
 
     // ---- fake sphere normal ----
-    float z = sqrt(1.0 - r2);
+    float z = sqrt(1.0 - r2); 
     vec3 normal = normalize(vec3(vOffset, z));
 
     // ---- lighting ----
-   float diff = max(dot(normal, uLightDir), 0.20);
+   float diff = max(dot(normal, uLightDir), 0.1);
    float light =   0.3 + 0.7 * diff ;
-float depth=length(vpos -vworld);
-float depthFade = 1.0 - exp(-depth / 150.0);
-    vec3 baseColor = vColor.rgb * light  ;
 
-float blur= 1.0f;
-if( r2>0.1){
-blur=1.0 - (r2 -0.1);}
-if(blur <=0)discard;
+    vec3 baseColor = vColor.rgb * light   ;
+
+
 
   
    
@@ -297,35 +292,6 @@ bool ensureVBOCapacity(size_t verts)
     return true;
 }
 
-// CHANGE: IBO for indexed quad rendering
-void ensureIBOCapacity(size_t numBodies)
-{
-    size_t numIndices = numBodies * 6;
-    if (numIndices <= ibo_capacity)
-        return;
-
-    ibo_capacity = numIndices * 2;
-    if (ibo)
-        glDeleteBuffers(1, &ibo);
-
-    glGenBuffers(1, &ibo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, ibo_capacity * sizeof(GLuint), nullptr, GL_STATIC_DRAW);
-
-    std::vector<GLuint> indices(ibo_capacity);
-    for (size_t i = 0; i < ibo_capacity / 6; i++)
-    {
-        GLuint base = i * 4;
-        indices[i * 6 + 0] = base + 0;
-        indices[i * 6 + 1] = base + 1;
-        indices[i * 6 + 2] = base + 2;
-        indices[i * 6 + 3] = base + 0;
-        indices[i * 6 + 4] = base + 2;
-        indices[i * 6 + 5] = base + 3;
-    }
-    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indices.size() * sizeof(GLuint), indices.data());
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-}
 
 // CHANGE: Orthographic projection matrix
 void setOrtho(float left, float right, float bottom, float top, float nearv, float farv, float *out4x4)
@@ -350,13 +316,14 @@ inline void worldToScreen_topLeft(float wx, float wy, float &sx, float &sy, cons
     float halfH = v.height * 0.5f * v.zoom;
     float halfW = v.width() * 0.5f * v.zoom;
     float left = v.cx - halfW;
-    float top = v.cy - halfH;
+    float top = v.cz - halfH;
     float scale = (float)currentHeight / (v.height * v.zoom);
     sx = (wx - left) * scale;
     sy = (wy - top) * scale;
 }
 
 float y, p;
+
 
 void restartSimulation()
 {
@@ -376,6 +343,7 @@ void restartSimulation()
         freegpu();
         return;
     }
+    initFloor();
     registerBodies();
     settings.nopause = false;
     settings.spawnstate = true;
@@ -466,7 +434,7 @@ void calcKernels()
     // settings.spikycoef2 = 15.0f / (settings.pi * h5);
     settings.Sdensity = settings.pollycoef6 * h6; // self density at r=0
     settings.spikycoef = 15.0f / (settings.pi * h6);
-    settings.ndensity = settings.spikycoef * h3; // near self density at r=0
+    settings.ndensity = settings.spikycoef * h5; // near self density at r=0
     settings.spikygradv = -45 / (settings.pi * h6);
     settings.viscosity = 45 / (settings.pi * h6);
     settings.h2 = settings.h * settings.h;
@@ -489,8 +457,8 @@ void drawAll()
     glm::mat4 proj = glm::perspective(
         glm::radians(camera.fov),
         (float)currentWidth / (float)currentHeight,
-        0.1f,
-        20000.0f);
+        1.0f,
+        2000.0f);
 
     glm::mat4 viewMat = glm::lookAt(
         camera.position,
@@ -498,7 +466,12 @@ void drawAll()
         camera.up);
     glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 0.6f, 1.0f));
     float aspect = (float)currentWidth / (float)currentHeight;
+    const glm::mat4 invViewProj = glm::inverse(proj * viewMat);
+    glm::vec2 resolution = glm::vec2(currentWidth, currentHeight);
+    //   glm::vec4 invproj= 
+    sky.render(invViewProj, sky.sunDir, resolution);
 
+    
     if (settings.boundingBox)
     {
         // ── bounding box pass ────────────────────────────────────────────────────
@@ -523,16 +496,15 @@ void drawAll()
         glUseProgram(0);
     }
 	glDisable(GL_BLEND);
-
     glUseProgram(floorProgram);
     glUniformMatrix4fv(floor_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniformMatrix4fv(floor_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
-    glUniform3f(floor_uLightDir, lightDir.x, lightDir.y, lightDir.z);
+    glUniform3f(floor_uLightDir, sky.sunDir.x, sky.sunDir.y, sky.sunDir.z);
     glUniform1f(uTileSize, settings.tilesize);
     glUniform1f(uFloorSize, settings.floorbounds);
     glUniform1f(uVariation, settings.variationStrength);
     glUniform1f(uFloorCenterX, (settings.floorbounx + settings.floorboun_x) * 0.5f);
-    glUniform1f(uFloorCenterY, (settings.floorbouny + settings.floorboun_y) * 0.5f);
+    glUniform1f(uFloorCenterY, (settings.floorbounz + settings.floorboun_z) * 0.5f);
 
     glUniform3f(uColor1, settings.color1R, settings.color1G, settings.color1B);
     glUniform3f(uColor2, settings.color2R, settings.color2G, settings.color2B);
@@ -542,11 +514,12 @@ void drawAll()
     glDrawArrays(GL_TRIANGLES, 0, floorverts_count / 3);
     glBindVertexArray(0);
     glUseProgram(0);
+    
 
     bool rendered = fluidRenderer.render(vao, settings.count,
                                          proj, viewMat,
                                          settings.shaderType,
-                                         lightDir,
+                                         sky.sunDir,
                                          camera.fov, aspect);
 	glDisable(GL_BLEND);
     if (!rendered)
@@ -554,7 +527,7 @@ void drawAll()
         glUseProgram(program);
         glUniformMatrix4fv(loc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
         glUniformMatrix4fv(loc_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
-        glUniform3fv(loc_uLightDir, 1, glm::value_ptr(lightDir));
+        glUniform3fv(loc_uLightDir, 1, glm::value_ptr(sky.sunDir));
         glUniform3f(loc_uCameraPos, settings.wx, settings.wy, settings.wz);
 
         glBindVertexArray(vao);
@@ -562,20 +535,21 @@ void drawAll()
         glBindVertexArray(0);
         glUseProgram(0);
     }
+    
 }
 
 void updateCameraVectors(Camera &cam)
 {
     float yawRad = glm::radians(cam.yaw);
     float pitchRad = glm::radians(cam.pitch);
-
     // Z-up world
     cam.forward = glm::normalize(glm::vec3(
-        cos(yawRad) * cos(pitchRad),
-        sin(yawRad) * cos(pitchRad),
-        sin(pitchRad)));
+        cos(yawRad) * cos(pitchRad),  // X
+        sin(pitchRad),                // Y (UP)
+        sin(yawRad) * cos(pitchRad)   // Z
+    ));
 
-    cam.right = glm::normalize(glm::cross(cam.forward, glm::vec3(0, 0, 1)));
+    cam.right = glm::normalize(glm::cross(cam.forward, glm::vec3(0, 1, 0)));
     cam.up = glm::normalize(glm::cross(cam.right, cam.forward));
 }
 void cursorPosCallback(GLFWwindow *window, double xpos, double ypos)
@@ -608,7 +582,7 @@ void cursorPosCallback(GLFWwindow *window, double xpos, double ypos)
     dx *= mouseSensitivity;
     dy *= mouseSensitivity;
 
-    camera.yaw -= dx;
+    camera.yaw += dx;
     camera.pitch += dy;
 
     if (camera.pitch > 89.0f)
@@ -687,7 +661,7 @@ void framebuffer_size_callback(GLFWwindow *w, int width, int height)
     glViewport(0, 0, width, height);
     fluidRenderer.resize(width, height);
     view.cx = width * 0.5f;
-    view.cy = height * 0.5f;
+    view.cz = height * 0.5f;
     view.height = (float)height;
     view.aspect = (float)width / (float)height;
 }
@@ -705,13 +679,13 @@ int main()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     GLFWwindow *window = glfwCreateWindow(screenWidth, screenHeight, "fluid Simulation - OpenGL", nullptr, nullptr);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     if (!window)
     {
         std::cerr << "Failed create window\n";
         glfwTerminate();
         return -1;
     }
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(0);
 
@@ -721,9 +695,9 @@ int main()
         std::cerr << "Failed to init GLAD\n";
         return -1;
     }
-    glEnable(GL_BLEND);
+   // glEnable(GL_BLEND);
     //glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     glViewport(0, 0, screenWidth, screenHeight);
 
@@ -774,7 +748,9 @@ int main()
 
     calcKernels();
     initBoundingBox();
+    sky.init();
     initFloor();
+
     if (!initgpu(settings.maxparticles))
     {
         printf("Failed to initialize GPU memory. Exiting.\n");
@@ -803,11 +779,10 @@ int main()
     double fpsClock = lastTime;
 
     view.cx = screenWidth * 0.5f;
-    view.cy = screenHeight * 0.5f;
+    view.cz = screenHeight * 0.5f;
     view.height = (float)screenHeight;
     view.aspect = (float)screenWidth / (float)screenHeight;
     view.zoom = 1.0f;
-
     while (!glfwWindowShouldClose(window))
     {
 
@@ -850,7 +825,12 @@ int main()
                 updatePhysics(effectiveDt);
 
                 settings.accumulator -= settings.fixedDt;
+                
+                if (settings.avgFps < 5) {
+                    settings.recordSim = true;
+                }
             }
+            
         }
 
         /*if (debugtime > 0.50f) {
@@ -900,8 +880,7 @@ int main()
         glDeleteProgram(program);
     if (vbo)
         glDeleteBuffers(1, &vbo);
-    if (ibo)
-        glDeleteBuffers(1, &ibo);
+  
     if (vao)
         glDeleteVertexArrays(1, &vao);
     fluidRenderer.cleanup();

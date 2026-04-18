@@ -21,7 +21,8 @@
 #include "compute.h"
 #include "main.h"
 #include "floor.h"
-
+#include<glm/glm.hpp>
+#include"sky.h"
 // ─────────────────────────────────────────────────────────────────────────────
 //  Global sync flag
 //  Set to true by any UI widget that modifies a settings field.
@@ -502,7 +503,7 @@ static void DrawWorldContent()
         if (ImGui::DragFloat("+Y##wd", &settings.maxY, 0.5f, 1.f, 2000.f, "%.0f")) {
             bchg = true;
             float diff = settings.maxY - changey;
-            settings.floorbouny+= diff;
+            settings.floorbounz+= diff;
              if(settings.my>settings.maxY ){  
                 if(settings.spawnstate){  restartSimulation();}
                 settings.my = settings.maxY;}
@@ -515,7 +516,7 @@ static void DrawWorldContent()
         if (ImGui::DragFloat("-Y##wd", &settings.minY, 0.5f, -2000.f, -1.f, "%.0f")) {
             bchg = true;
             float diff = settings.minY - change_y;
-            settings.floorboun_y +=diff;
+            settings.floorboun_z +=diff;
                 if(settings.ny<settings.minY ){  
                     if(settings.spawnstate){  restartSimulation();}
                     settings.ny = settings.minY;}
@@ -627,8 +628,8 @@ static void DrawWorldContent()
     if (ImGui::DragFloat("floor size##wd", &settings.floorbounds, 0.5f, 0.5f, 1000.f, "%.0f")) {
         settings.floorbounx = settings.floorbounds * 0.5f;
         settings.floorboun_x = -settings.floorbounds * 0.5f;
-        settings.floorbouny = settings.floorbounds * 0.5f;
-        settings.floorboun_y = -settings.floorbounds * 0.5f;
+        settings.floorbounz = settings.floorbounds * 0.5f;
+        settings.floorboun_z = -settings.floorbounds * 0.5f;
         initFloor();
     }
     ImGui::SetItemTooltip("Width and depth of floor plane.  Larger = more visible floor but slower to render.");
@@ -638,6 +639,25 @@ static void DrawWorldContent()
     ImGui::ColorEdit3("2nd quad tile colour##wd", &settings.color2R); SYNC;
     ImGui::ColorEdit3("3rd quad tile colour##wd", &settings.color3R); SYNC;
     ImGui::ColorEdit3("4th quad tile colour##wd", &settings.color4R); SYNC;
+
+   
+        static float azimuth = 45.0f;   // degrees, 0=north
+        static float elevation = 40.0f; // degrees, 0=horizon
+
+        ImGui::SliderFloat("Azimuth", &azimuth, 0.f, 360.f, "%.1f deg");
+        ImGui::SliderFloat("Elevation", &elevation, -10.f, 90.f, "%.1f deg");
+
+        float az = glm::radians(azimuth);
+        float el = glm::radians(elevation);
+              sky.sunDir = glm::normalize(glm::vec3(
+            cos(el) * sin(az),
+            sin(el),
+            cos(el) * cos(az)
+        ));
+
+        ImGui::Text("Sun dir: (%.2f, %.2f, %.2f)",
+            sky.sunDir.x, sky.sunDir.y, sky.sunDir.z);
+    
     // ── Time ─────────────────────────────────────────────────────────────────
     Sec("Time");
     ImGui::TextDisabled("Speed / Substeps are in the Quick tab.");
@@ -694,7 +714,7 @@ static void DrawRenderContent()
 
         // Refraction
         Sec("Refraction");
-        ImGui::SliderFloat("Ray March##rnref", &settings.refrMult, 0.0f, 3.0f, "%.3f"); SYNC;
+        ImGui::SliderFloat("Ray March##rnref", &settings.refrMult, 0.0f, 5.0f, "%.3f"); SYNC;
         ImGui::SetItemTooltip(
             "Refraction ray march multiplier.\n"
             "Scales how far the refracted ray is projected through the fluid thickness.\n"
@@ -710,13 +730,13 @@ static void DrawRenderContent()
         ImGui::SetItemTooltip(
             "Gaussian sigma scale. Higher = broader, smoother surface.\n"
             "Lower = individual particles more distinct. Default 0.85.");
-        ImGui::SliderFloat("Depth Falloff##rnbd", &settings.blurDiffStrength, 0.1f, 80.0f, "%.1f"); SYNC;
+        ImGui::SliderFloat("Depth Falloff##rnbd", &settings.blurDiffStrength, 0.1f, 10.0f, "%.1f"); SYNC;
         ImGui::SetItemTooltip(
             "Depth-similarity weight. Higher = sharper fluid silhouette.\n"
             "Lower = blur bleeds across depth discontinuities. Default 8.0.");
         ImGui::InputInt("Max Radius (px)##rnbmr", &settings.blurMaxRadius); SYNC;
         if (settings.blurMaxRadius < 2)  settings.blurMaxRadius = 2;
-        if (settings.blurMaxRadius > 64) settings.blurMaxRadius = 64;
+        if (settings.blurMaxRadius > 256) settings.blurMaxRadius = 256;
         ImGui::SetItemTooltip("Screen-space pixel radius cap. Prevents runaway kernels at close range.");
     }
 
