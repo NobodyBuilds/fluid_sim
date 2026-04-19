@@ -24,7 +24,7 @@ GLint uColor2 = -1;
 GLint uColor3 = -1;
 GLint uColor4 = -1;
 
-const char *floorVertexShader = R"glsl(
+const char* floorVertexShader = R"glsl(
 #version 330 core
 
 layout(location = 0) in vec3 aPos;
@@ -40,7 +40,7 @@ void main() {
 }
 )glsl";
 
-const char *floorFragmentShader = R"glsl(
+const char* floorFragmentShader = R"glsl(
 #version 330 core
 
 in vec3 vPos;
@@ -48,14 +48,13 @@ out vec4 FragColor;
 
 uniform vec3 uLightDir;
 
-// 🧠 NEW uniforms (from CPU)
 uniform float uTileSize;
 uniform float uFloorSize;
 uniform float uVariation;
 uniform float uFloorCenterX;
 uniform float uFloorCenterY;
 
-// 🎨 4 quadrant colors
+// 4 quadrant colors
 uniform vec3 uColor1;
 uniform vec3 uColor2;
 uniform vec3 uColor3;
@@ -68,7 +67,6 @@ float hash(vec2 p) {
 
 void main() {
 
-    // normalize position into floor space (0 → floorSize)
     vec2 pos = vPos.xz;
 
     // tile coords
@@ -76,35 +74,37 @@ void main() {
 
     float checker = mod(tile.x + tile.y, 2.0);
 
-    // 🧠 quadrant selection (centered at floor center for equal quadrants)
+    // quadrant selection (centered at floor center)
     vec3 col;
 
-   if (pos.x > uFloorCenterX && pos.y > uFloorCenterY)
-    col = uColor4;  // was uColor1
-else if (pos.x < uFloorCenterX && pos.y > uFloorCenterY)
-    col = uColor3;  // was uColor2
-else if (pos.x < uFloorCenterX && pos.y < uFloorCenterY)
-    col = uColor2;  // was uColor3
-else
-    col = uColor1; 
+    if (pos.x > uFloorCenterX && pos.y > uFloorCenterY)
+        col = uColor4;
+    else if (pos.x < uFloorCenterX && pos.y > uFloorCenterY)
+        col = uColor3;
+    else if (pos.x < uFloorCenterX && pos.y < uFloorCenterY)
+        col = uColor2;
+    else
+        col = uColor1;
 
     // checker mix (slight variation between light/dark tiles)
     vec3 baseColor = mix(col * 1.1, col * 0.85, checker);
 
-    // 🎲 variation
+    // variation
     float rnd = hash(tile);
     baseColor += (rnd - 0.5) * uVariation;
 
-    // 🌗 lighting
+    // ── Sun-only directional lighting (BUG 2 fix) ─────────────────────────────
+    // Removed: baseColor * (0.3 + 0.7 * diff)
+    //   The 0.3 constant was an ambient sky term bleeding into the floor even
+    //   when the sun is dim/absent. Floor lighting is now purely directional:
+    //   only the sun's NdL term, with a tiny 0.02 floor so geometry in full
+    //   shadow isn't rendered pure black (physical bounce, not sky fill).
     vec3 normal = vec3(0.0, 1.0, 0.0);
-    float diff = max(dot(normal, normalize(uLightDir)), 0.1);
-
-    vec3 finalColor = baseColor * (0.3 + 0.7 * diff);
+    float diff = max(dot(normal, normalize(uLightDir)), 0.0);
+    vec3 finalColor = baseColor * max(diff, 0.02);   // sun-only, no ambient sky
 
     FragColor = vec4(finalColor, 1.0);
 }
-
-
 )glsl";
 
 float floorverts[] = {
@@ -114,7 +114,7 @@ float floorverts[] = {
     0.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 0.0f,
-    0.0f, 0.0f, 0.0f};
+    0.0f, 0.0f, 0.0f };
 const size_t floorverts_count = sizeof(floorverts) / sizeof(float);
 extern "C" void initFloor()
 {
@@ -130,17 +130,12 @@ extern "C" void initFloor()
         floorVBO = 0;
     }
 
-    // Calculate individual bounds from floorbounds
-
     // Update vertex data with current settings
     float verts[] = {
-        
-
         // triangle 2
         settings.floorbounx, settings.minY - 1.0f, settings.floorboun_z,
         settings.floorboun_x, settings.minY - 1.0f, settings.floorboun_z,
         settings.floorboun_x, settings.minY - 1.0f, settings.floorbounz,
-    
 
         // triangle 1
         settings.floorboun_x, settings.minY - 1.0f, settings.floorbounz,
@@ -169,7 +164,6 @@ extern "C" void initFloor()
     }
     else
     {
-
         printf("initfloor\n");
     }
 }

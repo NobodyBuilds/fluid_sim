@@ -805,7 +805,7 @@ __global__ void computePressure(
 
                         float lapW = viscK * x;
                         float viscosityCoeff = st;
-                        visc += viscosityCoeff * m_j * vij / (rho_i * rho_j) * lapW;
+                        visc += viscosityCoeff * m_j * vij / ( rho_j) * lapW;
                     }
                 }
             }
@@ -814,9 +814,9 @@ __global__ void computePressure(
 
     float4 accl;
 
-    accl.z = (force.z + visc.z)/particlemass;
-    accl.x = (force.x + visc.x)/particlemass;
-    accl.y = (force.y + visc.y )/particlemass;
+    accl.z = (force.z + visc.z)/rho_i;
+    accl.x = (force.x + visc.x)/rho_i;
+    accl.y = (force.y + visc.y)/rho_i;
     accl.w = 0.0f;
     int org = particleIndex[i]; // where this particle came from in the original unsorted array
                                 // velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy

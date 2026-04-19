@@ -3,7 +3,8 @@ out vec4 FragColor;
 
 uniform vec3 u_SunDir;       // normalized, points TOWARD sun
 uniform vec2 u_Resolution;
-uniform mat4 u_InvViewProj;  // for reconstructing world ray dir
+uniform mat4 u_InvViewProj; // for reconstructing world ray dir
+uniform float u_SunIntensity;
 
 vec3 getSkyColor(vec3 rd, vec3 sunDir) {
     float sunDot = max(dot(rd, sunDir), 0.0);
@@ -16,12 +17,12 @@ vec3 getSkyColor(vec3 rd, vec3 sunDir) {
     vec3 sky = mix(horizCol, zenith, pow(horizon, 0.5));
 
     // Mie — sun glow
-    float mie = pow(sunDot, 8.0) * 0.4;
+ float mie = pow(sunDot, 8.0) * 0.4 * u_SunIntensity; 
     sky += vec3(1.0, 0.8, 0.5) * mie;
 
     // Sun disk
     float disk = step(0.9997, sunDot); // hard cutoff, tweak for size
-    sky = mix(sky, vec3(1.5, 1.6, 0.9), disk);
+   sky = mix(sky, vec3(1.5, 1.6, 0.9) * u_SunIntensity, disk);
 
     // Below horizon: ground fog
     float ground = clamp(-rd.y * 8.0, 0.0, 1.0);

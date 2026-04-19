@@ -646,6 +646,7 @@ static void DrawWorldContent()
 
         ImGui::SliderFloat("Azimuth", &azimuth, 0.f, 360.f, "%.1f deg");
         ImGui::SliderFloat("Elevation", &elevation, -10.f, 90.f, "%.1f deg");
+        ImGui::SliderFloat("Sun Intensity", &settings.sunIntensity, 0.1f, 5.0f);
 
         float az = glm::radians(azimuth);
         float el = glm::radians(elevation);

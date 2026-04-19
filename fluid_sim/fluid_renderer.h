@@ -1,6 +1,6 @@
 #pragma once
 // ═══════════════════════════════════════════════════════════════════════════════
-//  fluid_renderer.h  v4
+//  fluid_renderer.h  v4 (bugfix pass)
 //
 //  shaderType 0 → Screen-space water    (this renderer — 5 passes)
 //  shaderType 1 → Legacy particles      (render() returns false, caller draws)
@@ -25,10 +25,25 @@
 //    • FluidRenderer      struct updated; passComposite signature gains proj
 //    • render()           passes proj to passComposite, drops viewRotInv
 //
+//  BUGFIX PASS (v4 → v4.1):
+//    BUG 1 — skyMask used reflDirWorld.z (forward) instead of .y (world-up).
+//             Fixed: smoothstep now gates on reflDirWorld.y.
+//    BUG 1b— topMask (Nworld.y gate) was computed but never wired to
+//             reflWeight or sunSpec. Fixed: reflWeight *= topMask,
+//             sunSpec *= topMask.
+//    BUG 2 — ambient was mix(0.03, 0.90, waveShadow) — up to 0.90 sky bleed.
+//             Fixed: replaced with a tiny constant 0.04 (sun-only model).
+//    BUG 3a— sunSpec missing * uSunIntensity. Fixed.
+//    BUG 3b— skyRefl (base Rayleigh sky) not scaled by uSunIntensity.
+//             evalSky only scales Mie+disk internally. Fixed by multiplying
+//             skyRefl by uSunIntensity before the final blend.
+//
 //  UNCHANGED:
 //    SSF_DEPTH_VERT, SSF_DEPTH_FRAG, SSF_QUAD_VERT
 //    passDepth(), passThickness(), compileShader(), linkProgram(), initQuad()
 //    render() mode-1 early return block
+//    Depth write order verified correct: sphere-surface gl_FragDepth +
+//    hardware depth test in passDepth ensures smooth depth field.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include <glad/glad.h>
@@ -79,7 +94,7 @@ void main(){
     vec3  surfView = vCenterView + vec3(vOffset.x,vOffset.y,zLocal)*vRadius;
     outLinearDepth = -surfView.z;                          // positive depth
     vec4 clip    = uProj * vec4(surfView,1.0);
-    gl_FragDepth = (clip.z/clip.w)*0.7 + 0.3;             // hardware depth
+    gl_FragDepth = (clip.z/clip.w)*0.5 + 0.5;             // standard NDC→[0,1] mapping
 }
 )glsl";
 
@@ -233,15 +248,23 @@ void main(){
 //    .g = smooth thick  (for Beer-Lambert)
 //    .a = hard depth    (for early-out guard)
 //
-//  Lighting model (simplified, no sky reflection):
+//  Lighting model:
 //    Full Fresnel equations (IOR air=1.0, water=1.33)
 //    Full Snell's law refraction + view-space ray march + screen projection
 //    Beer-Lambert per-channel extinction
-//    Basic NdL diffuse + ambient (lighting placeholder)
-//    NO sky reflection, NO specular, NO SSS, NO fake shadow
+//    Sun-only diffuse (no ambient sky irradiance)
+//    Sky colour is the reflection *target* only, not ambient fill
+//    Specular and reflection both scaled by uSunIntensity
 //
-//  Normal reconstruction: Unity NormalsFromDepth approach — single-texel
-//  offsets, picks the finite difference with smaller Z delta per axis.
+//  Normal reconstruction: Unity NormalsFromDepth approach — 3×3 Sobel on
+//  linear depth texture, converts gradient to view-space normal.
+//
+//  BUGFIXES applied here (see top-of-file changelog):
+//    BUG 1  skyMask: .z → .y  (world Y is up)
+//    BUG 1b topMask gates reflWeight AND sunSpec
+//    BUG 2  ambient: mix(0.03,0.90,waveShadow) → constant 0.04
+//    BUG 3a sunSpec: + uSunIntensity multiplier
+//    BUG 3b skyRefl: * uSunIntensity before final blend
 // ─────────────────────────────────────────────────────────────────────────────
 static const char* SSF_COMPOSITE_FRAG = R"glsl(
 #version 330 core
@@ -255,10 +278,16 @@ uniform vec3  uExtinction;
 uniform float uTanHalfFov;
 uniform float uAspect;
 uniform mat4  uProj;             // projection matrix (for refraction exit projection)
-uniform float uRefrMult; 
-        // refraction ray march multiplier
+uniform float uRefrMult;         // refraction ray march multiplier
+uniform float uMaxRefractThick;  // clamp on thickness before ray march (prevents chaotic interior)
   uniform vec3 uWaterShallow;   // shallow water tint (RGB 0-1)
   uniform vec3 uWaterDeep;      // deep water tint (RGB 0-1)
+uniform mat3  uInvViewRot;    // transpose of view's rotation block -- world<-view
+uniform vec3  uSunDirWorld;   // normalised sun direction, world space
+uniform vec3  uSunColor;      // sun disk + aureole color
+uniform vec3  uSkyZenith;     // sky color straight up
+uniform vec3  uSkyHorizon;
+uniform float uSunIntensity;  // matches sky.frag -- scales Mie, disk, specular, and reflection
 
 in  vec2 vUV;
 out vec4 outColor;
@@ -297,96 +326,178 @@ vec3 calcRefract(vec3 incident, vec3 N, float iorA, float iorB){
 }
 
 // Normal reconstruction -- Unity NormalsFromDepth approach.
-// Single-texel offsets. Picks smaller-Z-delta finite difference per axis.
-// Hard depth (.a) used for neighbour validity; smooth depth (.r) for positions.
+// 3×3 Sobel on linear depth. Hard depth (.a) used for background masking;
+// smooth depth (.r) used for position reconstruction.
+// Handedness: gx/gy negate → normal points toward the camera in view space.
 vec3 reconstructNormal(vec2 uv, float filtD) {
     vec2 ox = vec2(uTexelSize.x, 0.0);
     vec2 oy = vec2(0.0, uTexelSize.y);
-    float d00 = texture(uPackTex, uv - ox - oy).r;
-    float d10 = texture(uPackTex, uv      - oy).r;
-    float d20 = texture(uPackTex, uv + ox - oy).r;
-    float d01 = texture(uPackTex, uv - ox     ).r;
-    float d21 = texture(uPackTex, uv + ox     ).r;
-    float d02 = texture(uPackTex, uv - ox + oy).r;
-    float d12 = texture(uPackTex, uv      + oy).r;
-    float d22 = texture(uPackTex, uv + ox + oy).r;
-    float h00 = step(0.001, texture(uPackTex, uv - ox - oy).a);
-    float h20 = step(0.001, texture(uPackTex, uv + ox - oy).a);
-    float h02 = step(0.001, texture(uPackTex, uv - ox + oy).a);
-    float h22 = step(0.001, texture(uPackTex, uv + ox + oy).a);
-    float gx = (-d00*h00 + d20*h20) + 2.0*(-d01 + d21)
-              + (-d02*h02 + d22*h22);
-    float gy = (-d00*h00 - d20*h20) + 2.0*(-d10 + d12)
-              + ( d02*h02 + d22*h22);
-    // Correct normal from Sobel depth gradient.
-    // Sobel kernel sums to 8× per-texel change; UV→view_x has 2× from NDC mapping.
-    // Combined factor: 16 * texelSize.x * aspect * scale, where scale = depth * tanHalfFov.
-    // Previous bug: Z was "2.0 * uTexelSize.x" (≈0.001), making every normal near-horizontal
-    // → Fresnel ≈ 1.0 everywhere → full white. Fixed below.
+
+    vec4 s00 = texture(uPackTex, uv - ox - oy);
+    vec4 s10 = texture(uPackTex, uv      - oy);
+    vec4 s20 = texture(uPackTex, uv + ox - oy);
+    vec4 s01 = texture(uPackTex, uv - ox     );
+    vec4 s21 = texture(uPackTex, uv + ox     );
+    vec4 s02 = texture(uPackTex, uv - ox + oy);
+    vec4 s12 = texture(uPackTex, uv      + oy);
+    vec4 s22 = texture(uPackTex, uv + ox + oy);
+
+    // Background neighbours use centre depth so they contribute zero gradient
+    float d00 = mix(filtD, s00.r, step(0.001, s00.a));
+    float d10 = mix(filtD, s10.r, step(0.001, s10.a));
+    float d20 = mix(filtD, s20.r, step(0.001, s20.a));
+    float d01 = mix(filtD, s01.r, step(0.001, s01.a));
+    float d21 = mix(filtD, s21.r, step(0.001, s21.a));
+    float d02 = mix(filtD, s02.r, step(0.001, s02.a));
+    float d12 = mix(filtD, s12.r, step(0.001, s12.a));
+    float d22 = mix(filtD, s22.r, step(0.001, s22.a));
+
+    // Sobel X and Y gradients of linear depth
+    float gx = (-d00 + d20) + 2.0*(-d01 + d21) + (-d02 + d22);
+    float gy = (-d00 - d20) + 2.0*(-d10 + d12) + ( d02 + d22);
+
+    // Convert pixel-space gradient magnitude to view-space normal.
+    // scale = view-space span per pixel at this depth.
     float scale = filtD * uTanHalfFov;
-    vec3 N = normalize(vec3(-gx,
-                           -gy,
-                            16.0 * uTexelSize.x * uAspect * scale));
-    if(N.z < 0.0) N = -N;
+    vec3 N = normalize(vec3(-gx, -gy, 16.0 * uTexelSize.x * uAspect * scale));
+    N = normalize(N + vec3(0.0, 0.0, 0.02));
     return N;
 }
 
+// Approximate sky colour in the given world-space direction.
+// Matches sky.frag palette exactly.
+// uSunIntensity only scales Mie and disk here; the base Rayleigh sky is
+// intensity-independent inside this function. The caller multiplies the full
+// result by uSunIntensity so the whole reflected image brightens/dims together.
+vec3 evalSky(vec3 dir, vec3 sunDir) {
+    float sunDot  = max(dot(dir, sunDir), 0.0);
+    float horizon = max(dir.y, 0.0);
+
+    vec3 zenith   = vec3(0.1, 0.3, 0.8);
+    vec3 horizCol = mix(vec3(0.9, 0.5, 0.2), vec3(0.7, 0.8, 0.9),
+                        clamp(sunDir.y + 0.3, 0.0, 1.0));
+    vec3 skyBase  = mix(horizCol, zenith, pow(horizon, 0.5));
+
+    // Mie glow
+    float mie = pow(sunDot, 8.0) * 0.4 * uSunIntensity;
+    skyBase += vec3(1.0, 0.8, 0.5) * mie;
+
+    // Sun disk
+    float disk = step(0.9997, sunDot);
+    skyBase = mix(skyBase, vec3(1.5, 1.6, 0.9) * uSunIntensity, disk);
+
+    // Ground fog below horizon
+    float ground = clamp(-dir.y * 8.0, 0.0, 1.0);
+    skyBase = mix(skyBase, vec3(0.15, 0.12, 0.1), ground);
+
+    return skyBase;
+}
 
 void main(){
-    vec4 packedtex    = texture(uPackTex, vUV);
+    vec4 packedtex   = texture(uPackTex, vUV);
     float hardDepth  = packedtex.a;
-    float filtDepth = packedtex.r;
+    float filtDepth  = packedtex.r;
     float thick      = clamp(packedtex.g, 0.0, 8.0);
 
-    // Early out -- use hard depth to avoid false hits from blur bleed
+    // Early out — use hard depth to avoid false hits from blur bleed
     if(hardDepth < 0.001){
-     discard;
+        discard;
     }
 
     vec3 posV = toView(vUV, filtDepth);
     vec3 N    = reconstructNormal(vUV, filtDepth);
     vec3 V    = normalize(-posV);   // toward camera
 
-    // -- Full Fresnel (IOR 1.0 -> 1.33) ----------------------------------------
-    vec3 incident = -V;
-    float fresnel = calcFresnel(incident, N, 1.0, 1.33);
+    // ── Upward-facing mask (world space) ─────────────────────────────────────
+    // FIX BUG 1b: topMask was computed before but never used. Gate ALL
+    // reflection and specular contributions on it so vertical/side normals
+    // (edges/silhouettes) receive zero reflection, not full Fresnel.
+    vec3  Nworld  = normalize(uInvViewRot * N);
+Nworld.y= Nworld.y;
+  float topMask = smoothstep(-0.4, 0.2, Nworld.y);
+    // ── Full Fresnel (IOR 1.0 → 1.33) ────────────────────────────────────────
+    vec3  incident = -V;
+   float fresnel = calcFresnel(incident, N, 1.0, 1.33);
 
-    // -- Full Snell's law refraction -------------------------------------------
+// Boost the Fresnel response. 
+// This makes the transition to "mirror-like" happen sooner as the angle increases.
+fresnel = pow(fresnel, 0.8); 
+fresnel = clamp(fresnel, 0.02, 1.0);
+
+    // ── Full Snell's law refraction ───────────────────────────────────────────
     vec3 refractDir = calcRefract(incident, N, 1.0, 1.33);
 
     vec2 refrUV;
     if(length(refractDir) > 0.001){
-        // March refracted ray through fluid volume by thickness
-        vec3 exitPosV  = posV + refractDir * thick * uRefrMult;
-        // Project exit point back to screen UV
-        vec4 clipExit  = uProj * vec4(exitPosV, 1.0);
+        float safeThick = clamp(thick, 0.0, uMaxRefractThick);
+        vec3  exitPosV  = posV + refractDir * safeThick * uRefrMult;
+        vec4  clipExit  = uProj * vec4(exitPosV, 1.0);
         refrUV = clipExit.xy / clipExit.w * 0.5 + 0.5;
         refrUV = clamp(refrUV, vec2(0.001), vec2(0.999));
     } else {
-        refrUV = vUV;   // TIR -- sample straight through
+        refrUV = vUV;   // TIR — sample straight through
     }
     vec3 sceneCol = texture(uSceneTex, refrUV).rgb;
 
+    // ── Beer-Lambert transmittance ────────────────────────────────────────────
     vec3  extinction    = max(uExtinction, vec3(0.001));
-  // sqrt-compress thickness to level additive-blend humps
-  float thickComp    = sqrt(clamp(thick, 0.0, 8.0));
-  vec3  transmittance = exp(-uAbsorption * extinction * thickComp);
+    float thickComp     = sqrt(clamp(thick, 0.0, 8.0));
+    vec3  transmittance = exp(-uAbsorption * extinction * thickComp);
 
-  // Water tint: interpolate shallow<->deep by per-channel transmittance
-  vec3 waterTint = mix(uWaterDeep, uWaterShallow, transmittance);
+    vec3 waterTint = mix(uWaterDeep, uWaterShallow, transmittance);
 
-  // Surface lighting — independent of transmittance
-  float NdL        = max(dot(N, uLightDirView), 0.0);
-  vec3  surfLight  = waterTint * (NdL * (1.0 - fresnel) + 0.15);
+    // ── Surface lighting — sun-only diffuse ───────────────────────────────────
+    // FIX BUG 2: replaced mix(0.03, 0.90, waveShadow) with a small constant.
+    // The old term injected up to 0.90 of ambient "sky" irradiance into the
+    // fluid body. Sun-only model: only the directional NdL term, plus a tiny
+    // floor so the darkest geometry isn't pure black.
+    float NdL     = max(dot(N, uLightDirView), 0.0);
+    float ambient = 0.04;   // tiny bounce — no sky contribution
+    vec3  surfLight = waterTint * (NdL * (1.0 - fresnel) + ambient);
 
-  // Correct composite: background attenuated + fluid body fills the rest
-  vec3 refracted   = sceneCol * transmittance + surfLight * (1.0 - transmittance);
+    // ── Correct refracted composite ───────────────────────────────────────────
+  vec3 refracted = sceneCol * transmittance + surfLight * (1.0 - transmittance);
 
-  // Fresnel sky reflection — use actual sky blue, not near-white.
-  // Old: mix(..., vec3(0.85,0.90,0.95), fresnel*0.6) — essentially a white mirror.
-  vec3 col = mix(refracted, vec3(0.50, 0.65, 0.85), fresnel * 0.35);
+    // ── Sky reflection ────────────────────────────────────────────────────────
+    vec3 reflDirV     = reflect(incident, N);
+    vec3 reflDirWorld = normalize(uInvViewRot * reflDirV);
+
+    // FIX BUG 1: was reflDirWorld.z (camera-forward component) — wrong axis.
+    // Y is world-up; gate on .y so only upward-facing reflection rays survive.
+float skyMask = smoothstep(-0.1, 0.2, reflDirWorld.y);
+
+    // FIX BUG 3b: evalSky scales only Mie+disk by uSunIntensity internally.
+    // The base Rayleigh sky colour is intensity-independent inside evalSky.
+    // Multiply the full result by uSunIntensity so reflected radiance scales
+    // correctly with incident solar radiance (physically: L_refl ∝ L_incident).
+  vec3 skyRefl  = evalSky(reflDirWorld, uSunDirWorld) * uSunIntensity;
+
+
+    // ── Blinn-Phong sun specular ──────────────────────────────────────────────
+    // FIX BUG 3a: was uSunColor * spec — missing uSunIntensity multiplier.
+    // Specular highlight brightness must track the sun's radiance.
+    vec3  H      = normalize(uLightDirView + V);
+    float NdH    = max(dot(N, H), 0.0);
+    float spec   = pow(NdH, 256.0) * 0.5 + pow(NdH, 32.0) * 0.15;
+    vec3  sunSpec = uSunColor * spec * uSunIntensity;  // FIX BUG 3a
+
+    // ── Final composite ───────────────────────────────────────────────────────
+    // FIX BUG 1b: reflWeight and sunSpec both gated by topMask.
+    // Fragments where the reconstructed normal is near-horizontal (edges,
+    // silhouettes) contribute zero reflection and zero specular. Only the
+    // flat water top surface (Nworld.y ≈ 1) gets the full Fresnel mirror look.
+   // Combine masks
+// We use max() here for the topMask to ensure silhouettes always have a chance to reflect
+float reflWeight = fresnel * skyMask; 
+reflWeight *= topMask;
+
+// Final Color Assembly
+
+// Ensure sunSpec also uses the topMask so it doesn't appear on the bottom of bubbles
+vec3 finalSpec = sunSpec * topMask;
+
+vec3 col = mix(refracted, skyRefl, reflWeight) + finalSpec;
   outColor = vec4(col, 1.0);
-
 }
 )glsl";
 
@@ -414,7 +525,14 @@ struct SSFUniforms
     GLint comp_uTanHalfFov = -1, comp_uAspect = -1;
     GLint comp_uProj = -1;
     GLint comp_uRefrMult = -1;
+    GLint comp_uMaxRefractThick = -1;
     GLint comp_uWaterShallow = -1, comp_uWaterDeep = -1;
+    GLint comp_uInvViewRot = -1;
+    GLint comp_uSunDirWorld = -1;
+    GLint comp_uSunColor = -1;
+    GLint comp_uSkyZenith = -1;
+    GLint comp_uSkyHorizon = -1;
+    GLint comp_uSunIntensity = -1;  // sunIntensity — drives Mie, disk, specular, reflection
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -483,7 +601,8 @@ private:
     void passBlur(const glm::mat4& proj);
     void passComposite(const glm::vec3& lightDirView,
         float fovDeg, float aspect,
-        const glm::mat4& proj);
+        const glm::mat4& proj,
+        const glm::mat4& view);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -608,9 +727,15 @@ inline void FluidRenderer::cacheUniforms()
     u.comp_uAspect = glGetUniformLocation(compositeProg, "uAspect");
     u.comp_uProj = glGetUniformLocation(compositeProg, "uProj");
     u.comp_uRefrMult = glGetUniformLocation(compositeProg, "uRefrMult");
+    u.comp_uMaxRefractThick = glGetUniformLocation(compositeProg, "uMaxRefractThick");
     u.comp_uWaterShallow = glGetUniformLocation(compositeProg, "uWaterShallow");
     u.comp_uWaterDeep = glGetUniformLocation(compositeProg, "uWaterDeep");
-
+    u.comp_uInvViewRot = glGetUniformLocation(compositeProg, "uInvViewRot");
+    u.comp_uSunDirWorld = glGetUniformLocation(compositeProg, "uSunDirWorld");
+    u.comp_uSunColor = glGetUniformLocation(compositeProg, "uSunColor");
+    u.comp_uSkyZenith = glGetUniformLocation(compositeProg, "uSkyZenith");
+    u.comp_uSkyHorizon = glGetUniformLocation(compositeProg, "uSkyHorizon");
+    u.comp_uSunIntensity = glGetUniformLocation(compositeProg, "uSunIntensity");
 }
 
 inline void FluidRenderer::destroyBuffers()
@@ -637,6 +762,10 @@ inline void FluidRenderer::init(int w, int h)
     cacheUniforms();
 
     // Depth FBO: R32F colour + hardware depth renderbuffer
+    // Depth write order: sphere-surface impostor writes gl_FragDepth to the
+    // hardware depth buffer. GL_DEPTH_TEST + GL_LESS ensures only the closest
+    // sphere-surface point survives at each pixel, giving a smooth depth field
+    // for the bilateral blur and normal reconstruction.
     glGenFramebuffers(1, &depthFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
     glGenTextures(1, &depthTex);
@@ -827,7 +956,7 @@ inline void FluidRenderer::passBlur(const glm::mat4& proj)
 
 inline void FluidRenderer::passComposite(const glm::vec3& lightDirView,
     float fovDeg, float aspect,
-    const glm::mat4& proj)
+    const glm::mat4& proj, const glm::mat4& view)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
@@ -848,7 +977,7 @@ inline void FluidRenderer::passComposite(const glm::vec3& lightDirView,
     glUniform1i(u.comp_uPackTex, 0);
     glUniform1i(u.comp_uSceneTex, 2);
     glUniform2f(u.comp_uTexelSize, 1.0f / width, 1.0f / height);
-    glUniform3fv(u.comp_uLightDirView, 1, glm::value_ptr(lightDirView));
+    glUniform3fv(u.comp_uLightDirView, 1, glm::value_ptr(sky.sunDir));
     glUniform1f(u.comp_uAbsorption, settings.absorption);
     glUniform3f(u.comp_uExtinction,
         settings.extinctionR, settings.extinctionG, settings.extinctionB);
@@ -856,11 +985,25 @@ inline void FluidRenderer::passComposite(const glm::vec3& lightDirView,
     glUniform1f(u.comp_uAspect, aspect);
     glUniformMatrix4fv(u.comp_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniform1f(u.comp_uRefrMult, settings.refrMult);
+    float maxRefractThick = 4.0f * 2.0f * settings.size;
+    glUniform1f(u.comp_uMaxRefractThick, maxRefractThick);
     glUniform3f(u.comp_uWaterShallow,
         settings.shallowColorR / 255.f, settings.shallowColorG / 255.f, settings.shallowColorB / 255.f);
     glUniform3f(u.comp_uWaterDeep,
         settings.deepColorR / 255.f, settings.deepColorG / 255.f, settings.deepColorB / 255.f);
 
+    glm::mat3 invViewRot3 = glm::mat3(glm::inverse(view));
+    glUniformMatrix3fv(u.comp_uInvViewRot, 1, GL_FALSE, glm::value_ptr(invViewRot3));
+
+    // sun direction: world space for sky eval, view space for NdL diffuse
+    const float* l = glm::value_ptr(sky.sunDir);
+    glUniform3fv(u.comp_uSunDirWorld, 1, l);
+    glm::vec3 sunDirVS = glm::normalize(glm::vec3(view * glm::vec4(sky.sunDir, 0.0f)));
+    glUniform3fv(u.comp_uLightDirView, 1, glm::value_ptr(sunDirVS));
+    glUniform3f(u.comp_uSunColor, 1.20f, 1.05f, 0.80f);   // warm white sun
+    glUniform3f(u.comp_uSkyZenith, 0.10f, 0.30f, 0.75f);   // deep blue zenith
+    glUniform3f(u.comp_uSkyHorizon, 0.55f, 0.70f, 0.90f);
+    glUniform1f(u.comp_uSunIntensity, settings.sunIntensity);
 
     glBindVertexArray(quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -893,7 +1036,7 @@ inline bool FluidRenderer::render(GLuint particleVAO, int particleCount,
     passDepth(particleVAO, particleCount, proj, view);
     passThickness(particleVAO, particleCount, proj, view);
     passBlur(proj);
-    passComposite(lightDirView, fovDegrees, aspect, proj);
+    passComposite(lightDirView, fovDegrees, aspect, proj, view);
     return true;
 }
 

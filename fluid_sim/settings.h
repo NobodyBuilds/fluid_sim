@@ -9,13 +9,13 @@ struct param {
 	float cold = 4.500f;
 	float spacing = 1.01f;
 	float heatMultiplier = 15.0f;
-	float h = 3.70f;
+	float h = 4.0f;
 	float h2 = h * h;
 	float rest_density = 0.01600f;
-	float pressure = 3000.0f;
+	float pressure = 250.0f;
 	float nearpressure = 407.0f;
-	float visc = 0.0090f;
-	float gravityforce = 30.0f;
+	float visc = 0.11f;
+	float gravityforce = 20.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -125.0f;
@@ -88,6 +88,7 @@ struct param {
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
 	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
 
+	float sunIntensity = 1.5f;
 	// DEPRECATED — replaced by full Snell's law refraction. Kept for binary compat.
 	float refrStrength = 0.008f;
 

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include"settings.h"
 #include <glm/gtc/type_ptr.hpp>
 
 SkyRenderer sky;
@@ -87,6 +88,7 @@ void SkyRenderer::render(const glm::mat4& invViewProj, glm::vec3 sunDir, glm::ve
     setUniform(m_Shader, "u_InvViewProj", invViewProj);
     setUniform(m_Shader, "u_SunDir", sunDir);
     setUniform(m_Shader, "u_Resolution", res);
+    glUniform1f(glGetUniformLocation(m_Shader, "u_SunIntensity"), settings.sunIntensity);
 
     glBindVertexArray(m_VAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
