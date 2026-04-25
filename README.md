@@ -41,24 +41,24 @@ https://github.com/user-attachments/assets/050982f2-42cd-4b9e-bb81-10b7b968c721
 wasd for camera movement
 shift and space to change height movement
 
-## 🚀 Features
+##  Features
 
-* ⚡ **GPU‑accelerated SPH (CUDA)**
-* 🧠 **Spatial grid / hashing** for fast neighbor lookup
+*  **GPU‑accelerated SPH (CUDA)**
+*  **Spatial grid / hashing** for fast neighbor lookup
 
-* 💧 Realistic **pressure, density, viscosity & surface tension**
-* 📦 Configurable **bounding box with friction & damping**
-* 🧪 Fully **tunable simulation parameters**
-* 📊 Debug tools for density, pressure & neighbor counts
-* 🎮 Designed for **real‑time interactive simulation**
+*  Realistic **pressure, density, viscosity & surface tension**
+*  Configurable **bounding box with friction & damping**
+*  Fully **tunable simulation parameters**
+*  Debug tools for density, pressure & neighbor counts
+*  Designed for **real‑time interactive simulation**
 
 ---
 
-## 🧬 Core Simulation Model
+##  Core Simulation Model
 
 This implementation follows a **force‑based SPH pipeline**:
 
-### 1️⃣ Density Computation
+###  Density Computation
 
 Each particle samples nearby neighbors using a smoothing kernel:
 
@@ -66,7 +66,7 @@ Each particle samples nearby neighbors using a smoothing kernel:
 * Kernel Radius `h`
 * Mass per particle
 
-### 2️⃣ Pressure Calculation
+###  Pressure Calculation
 
 Pressure is derived using an equation of state:
 
@@ -75,7 +75,7 @@ Pressure is derived using an equation of state:
 * standard pressure equation
 * Density error from rest density
 
-### 3️⃣ Force Evaluation
+###  Force Evaluation
 
 Particles receive forces from:
 
@@ -85,7 +85,7 @@ Particles receive forces from:
 * Gravity
 * Boundary collisions
 
-### 4️⃣ Integration
+###  Integration
 
 Particle motion is updated via:
 
@@ -95,7 +95,7 @@ Particle motion is updated via:
 
 ---
 
-## 🧪 Adjustable Parameters
+##  Adjustable Parameters
 
 | Parameter        | Purpose                 |
 | ---------------- | ----------------------- |
@@ -113,7 +113,7 @@ Particle motion is updated via:
 
 ---
 
-## 🧠 Key Goals
+##  Key Goals
 
 * Stable **fluid compression without explosive pressure**
 * Balanced **neighbor count for natural water behavior**
@@ -122,7 +122,7 @@ Particle motion is updated via:
 
 ---
 
-## 🏗️ Architecture Overview
+##  Architecture Overview
 
 ```
 Particles
@@ -139,7 +139,7 @@ Grid Hash
 
 ---
 
-## ⚙️ Build & Run
+##  Build & Run
  
 ### CUDA Build Example
 cuda is used as a lib which is compiled befor with the help of build_cuda.bat file
@@ -152,7 +152,7 @@ cuda is used as a lib which is compiled befor with the help of build_cuda.bat fi
 * if faced error in cuda compilation or runtime error then tweak the arch sm_ in the build_cuda.bat with your gpu arch like sm_75,sm_85 etc based on gpu series
 ---
 
-## 🐛 Debug & Diagnostics
+##  Debug & Diagnostics
 
 * Print neighbor counts
 * Inspect density & pressure
@@ -160,31 +160,22 @@ cuda is used as a lib which is compiled befor with the help of build_cuda.bat fi
 
 ---
 
-## 📈 Performance Tips
+##  Performance Tips
 
 * Tune `h` and `cellSize` together
 * Keep average neighbors between **20–60**
 * Avoid extreme `K` values (causes pressure spikes)
-* Clamp max velocity to prevent tunneling
+
 
 ---
 
-## 🎯 Planned Improvements
-
-* 🌪️ Vorticity confinemen
-
-* 🧵 Async GPU compute pipeline
-* 🎥 Real‑time visualization UI
-
----
-
-## 📜 License
+##  License
 
 Open‑source for learning & experimentation. Modify freely.
 
 ---
 
-## ✨ Credits
+##  Credits
 
 Built with passion for **fluid physics, GPU compute, and simulation engineering**.
 
