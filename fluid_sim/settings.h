@@ -115,7 +115,8 @@ struct param {
 	int pressureMode = 0;
 	int shaderType = 0;
 	int samplen = 1;
-	int blurMaxRadius = 32;            // screen-space pixel radius cap
+	int blurMaxRadius = 32;    
+	int cframe = 30;// screen-space pixel radius cap
 
 	// === BOOL VARIABLES (1 byte each) ===
 	bool sph = true;
@@ -126,5 +127,6 @@ struct param {
 	bool debug = false;
 	bool recordSim = false;
 	bool spawnstate = true;
+	bool cf = false;
 };
 extern param settings;

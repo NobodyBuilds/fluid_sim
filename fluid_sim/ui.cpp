@@ -499,38 +499,38 @@ static void DrawWorldContent()
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        float changey = settings.maxY;
-        if (ImGui::DragFloat("+Y##wd", &settings.maxY, 0.5f, 1.f, 2000.f, "%.0f")) {
+        float changey = settings.maxz;
+        if (ImGui::DragFloat("+z##wd", &settings.maxz, 0.5f, 1.f, 2000.f, "%.0f")) {
             bchg = true;
-            float diff = settings.maxY - changey;
+            float diff = settings.maxz - changey;
             settings.floorbounz+= diff;
-             if(settings.my>settings.maxY ){  
+             if(settings.mz>settings.maxz ){  
                 if(settings.spawnstate){  restartSimulation();}
-                settings.my = settings.maxY;}
+                settings.mz = settings.maxz;}
 
             initFloor();
         }
-        ImGui::SetItemTooltip("Ceiling Y.");
+        ImGui::SetItemTooltip("wall Y.");
         ImGui::TableSetColumnIndex(1);
-        float change_y = settings.minY;
-        if (ImGui::DragFloat("-Y##wd", &settings.minY, 0.5f, -2000.f, -1.f, "%.0f")) {
+        float change_y = settings.minZ;
+        if (ImGui::DragFloat("-z##wd", &settings.minZ, 0.5f, -2000.f, -1.f, "%.0f")) {
             bchg = true;
-            float diff = settings.minY - change_y;
+            float diff = settings.minZ - change_y;
             settings.floorboun_z +=diff;
-                if(settings.ny<settings.minY ){  
+                if(settings.nz<settings.minZ   ){  
                     if(settings.spawnstate){  restartSimulation();}
-                    settings.ny = settings.minY;}
+                    settings.nz = settings.minZ;}
             initFloor();
         }
-        ImGui::SetItemTooltip("Floor Y.");
+        ImGui::SetItemTooltip("wall -z.");
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        if (ImGui::DragFloat("+Z##wd", &settings.maxz, 0.5f, 0.f, 2000.f, "%.0f")) {
+        if (ImGui::DragFloat("+Y##wd", &settings.maxY, 0.5f, 0.f, 2000.f, "%.0f")) {
             bchg = true;
-             if(settings.mz>settings.maxz ){
+             if(settings.my>settings.maxY ){
                 if(settings.spawnstate){  restartSimulation();}
-                settings.mz = settings.maxz;}
+                settings.my = settings.maxY;}
         }
 
         ImGui::SetItemTooltip("Back wall Z.");
@@ -775,6 +775,9 @@ static void DrawPerfContent()
     ImGui::PopStyleColor(2);
     ImGui::SetItemTooltip("FPS — last 128 frames.");
 
+    ImGui::Spacing();
+	ImGui::Checkbox("Limit copy frame time##pfcopy", &settings.cf); SYNC;
+	ImGui::InputInt("copy frame limit ", &settings.cframe); SYNC;
     ImGui::Spacing();
     if (BeginStat2("##pffst"))
     {

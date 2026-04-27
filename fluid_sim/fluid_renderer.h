@@ -413,7 +413,7 @@ void main(){
     // reflection and specular contributions on it so vertical/side normals
     // (edges/silhouettes) receive zero reflection, not full Fresnel.
     vec3  Nworld  = normalize(uInvViewRot * N);
-Nworld.y= Nworld.y;
+Nworld.y= Nworld.z;
   float topMask = smoothstep(-0.4, 0.2, Nworld.y);
     // ── Full Fresnel (IOR 1.0 → 1.33) ────────────────────────────────────────
     vec3  incident = -V;
@@ -446,21 +446,24 @@ fresnel = clamp(fresnel, 0.02, 1.0);
 
     vec3 waterTint = mix(uWaterDeep, uWaterShallow, transmittance);
 
-    // ── Surface lighting — sun-only diffuse ───────────────────────────────────
-    // FIX BUG 2: replaced mix(0.03, 0.90, waveShadow) with a small constant.
-    // The old term injected up to 0.90 of ambient "sky" irradiance into the
-    // fluid body. Sun-only model: only the directional NdL term, plus a tiny
-    // floor so the darkest geometry isn't pure black.
-    float NdL     = max(dot(N, uLightDirView), 0.0);
-    float ambient = 0.04;   // tiny bounce — no sky contribution
-    vec3  surfLight = waterTint * (NdL * (1.0 - fresnel) + ambient);
+   float dR = texture(uPackTex, vUV + vec2(uTexelSize.x, 0.0)).r;
+float dL = texture(uPackTex, vUV - vec2(uTexelSize.x, 0.0)).r;
+float dU = texture(uPackTex, vUV + vec2(0.0, uTexelSize.y)).r;
+float dD = texture(uPackTex, vUV - vec2(0.0, uTexelSize.y)).r;
+float curvature  = (dR + dL + dU + dD) - 4.0 * filtDepth;
+float waveShadow = clamp(-curvature * 8.0, 0.0, 0.35);
+
+float NdL    = max(dot(N, uLightDirView), 0.0);
+float ambient = 0.04;
+vec3 surfLight = waterTint * (NdL * (1.0 - fresnel) + ambient);
+surfLight *= (1.0 - waveShadow);
 
     // ── Correct refracted composite ───────────────────────────────────────────
   vec3 refracted = sceneCol * transmittance + surfLight * (1.0 - transmittance);
 
     // ── Sky reflection ────────────────────────────────────────────────────────
     vec3 reflDirV     = reflect(incident, N);
-    vec3 reflDirWorld = normalize(uInvViewRot * reflDirV);
+    vec3 reflDirWorld = normalize(uInvViewRot * -reflDirV);
 
     // FIX BUG 1: was reflDirWorld.z (camera-forward component) — wrong axis.
     // Y is world-up; gate on .y so only upward-facing reflection rays survive.
@@ -481,12 +484,7 @@ float skyMask = smoothstep(-0.1, 0.2, reflDirWorld.y);
     float spec   = pow(NdH, 256.0) * 0.5 + pow(NdH, 32.0) * 0.15;
     vec3  sunSpec = uSunColor * spec * uSunIntensity;  // FIX BUG 3a
 
-    // ── Final composite ───────────────────────────────────────────────────────
-    // FIX BUG 1b: reflWeight and sunSpec both gated by topMask.
-    // Fragments where the reconstructed normal is near-horizontal (edges,
-    // silhouettes) contribute zero reflection and zero specular. Only the
-    // flat water top surface (Nworld.y ≈ 1) gets the full Fresnel mirror look.
-   // Combine masks
+    
 // We use max() here for the topMask to ensure silhouettes always have a chance to reflect
 float reflWeight = fresnel * skyMask; 
 reflWeight *= topMask;

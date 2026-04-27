@@ -471,7 +471,6 @@ void drawAll()
     //   glm::vec4 invproj= 
     sky.render(invViewProj, sky.sunDir, resolution);
 
-    
     if (settings.boundingBox)
     {
         // ── bounding box pass ────────────────────────────────────────────────────
@@ -495,7 +494,8 @@ void drawAll()
         glBindVertexArray(0);
         glUseProgram(0);
     }
-	glDisable(GL_BLEND);
+
+    glDisable(GL_BLEND);
     glUseProgram(floorProgram);
     glUniformMatrix4fv(floor_uProj, 1, GL_FALSE, glm::value_ptr(proj));
     glUniformMatrix4fv(floor_uView, 1, GL_FALSE, glm::value_ptr(viewMat));
@@ -514,7 +514,6 @@ void drawAll()
     glDrawArrays(GL_TRIANGLES, 0, floorverts_count / 3);
     glBindVertexArray(0);
     glUseProgram(0);
-    
 
     bool rendered = fluidRenderer.render(vao, settings.count,
                                          proj, viewMat,
@@ -535,6 +534,9 @@ void drawAll()
         glBindVertexArray(0);
         glUseProgram(0);
     }
+
+   
+
     
 }
 
