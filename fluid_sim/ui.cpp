@@ -179,7 +179,7 @@ static bool BeginStat2(const char* id)
 // Call this as the FIRST item inside BeginChild / BeginTabItem content.
 static void DetachButton(int id)
 {
-    const char* lbl = "[^]";
+    const char* lbl = "[FLOAT]";
     float bw = ImGui::CalcTextSize(lbl).x + ImGui::GetStyle().FramePadding.x * 2.f + 2.f;
     float rx = ImGui::GetContentRegionMax().x - bw;
     ImGui::SetCursorPosX(rx);
@@ -413,7 +413,7 @@ static void DrawParticlesContent()
 
     ImGui::Spacing();
     ImGui::InputFloat("Radius##pt", &settings.size, 0.05f, 0.2f, "%.3f");
-    if (ImGui::IsItemDeactivatedAfterEdit()) { restartSimulation(); syncsettings = true; }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {  syncsettings = true; }
     ImGui::SetItemTooltip("Visual + collision radius.  Restart required.");
 
     ImGui::InputFloat("Mass##pt", &settings.particleMass, 0.1f, 0.5f, "%.3f");
@@ -646,7 +646,7 @@ static void DrawWorldContent()
 
         ImGui::SliderFloat("Azimuth", &azimuth, 0.f, 360.f, "%.1f deg");
         ImGui::SliderFloat("Elevation", &elevation, -10.f, 90.f, "%.1f deg");
-        ImGui::SliderFloat("Sun Intensity", &settings.sunIntensity, 0.1f, 5.0f);
+        ImGui::SliderFloat("Sun Intensity", &settings.sunIntensity, 0.1f, 5.0f); SYNC;
 
         float az = glm::radians(azimuth);
         float el = glm::radians(elevation);
@@ -775,9 +775,7 @@ static void DrawPerfContent()
     ImGui::PopStyleColor(2);
     ImGui::SetItemTooltip("FPS — last 128 frames.");
 
-    ImGui::Spacing();
-	ImGui::Checkbox("Limit copy frame time##pfcopy", &settings.cf); SYNC;
-	ImGui::InputInt("copy frame limit ", &settings.cframe); SYNC;
+  
     ImGui::Spacing();
     if (BeginStat2("##pffst"))
     {
@@ -899,38 +897,74 @@ void ui_init()
         ImDrawList* dl = ImGui::GetForegroundDrawList();
         const float lh = ImGui::GetTextLineHeight() + 3.0f;
         const float x = 14.0f;
-        float       y = 10.0f;
-        char b[128];
+        const float y0 = 10.0f;
+        const float pad = 8.0f;
+
+        // ── Pre-format every line so we can measure before drawing ────────────
+        struct HudLine { char text[128]; ImU32 col; };
+        HudLine lines[8];
+        int nLines = 0;
 
         ImU32 fpsCol = settings.avgFps > 100 ? IM_COL32(96, 188, 148, 210)
             : settings.avgFps > 50 ? IM_COL32(196, 172, 84, 210)
             : IM_COL32(188, 100, 100, 230);
-        sprintf(b, "%.0f fps   min %.0f   max %.0f",
+        snprintf(lines[nLines].text, 128, "%.0f fps   min %.0f   max %.0f",
             settings.avgFps, settings.minFps, settings.maxFps);
-        dl->AddText(ImVec2(x, y), fpsCol, b); y += lh;
+        lines[nLines++].col = fpsCol;
 
-        sprintf(b, "%d / %d particles", settings.count, settings.maxparticles);
-        dl->AddText(ImVec2(x, y), IM_COL32(148, 168, 196, 180), b); y += lh;
+        snprintf(lines[nLines].text, 128, "%d / %d particles",
+            settings.count, settings.maxparticles);
+        lines[nLines++].col = IM_COL32(148, 168, 196, 180);
 
-        sprintf(b, "cam  %.1f  %.1f  %.1f", settings.wx, settings.wy, settings.wz);
-        dl->AddText(ImVec2(x, y), IM_COL32(120, 180, 140, 155), b); y += lh;
+        snprintf(lines[nLines].text, 128, "cam  %.1f  %.1f  %.1f",
+            settings.wx, settings.wy, settings.wz);
+        lines[nLines++].col = IM_COL32(120, 180, 140, 155);
 
-        sprintf(b, "substeps %d   speed %.2fx", settings.substeps, settings.simspeed);
-        dl->AddText(ImVec2(x, y), IM_COL32(120, 120, 118, 148), b); y += lh;
+        snprintf(lines[nLines].text, 128, "substeps %d   speed %.2fx",
+            settings.substeps, settings.simspeed);
+        lines[nLines++].col = IM_COL32(120, 120, 118, 148);
 
-        if(settings.debug) {
-            sprintf(b, "neighbor count  min:%d ,max:%d,avg:%d ",settings.min_n,settings.max_n,settings.avg_n);
-            dl->AddText(ImVec2(x, y), IM_COL32(180, 120, 120, 140), b); y += lh;
-			sprintf(b, "density  min:%.4f ,max:%.4f,avg:%.4f ", settings.min_density, settings.max_density, settings.avg_density);
-			dl->AddText(ImVec2(x, y), IM_COL32(180, 120, 120, 140), b); y += lh;
-			sprintf(b, "near density  min:%.4f ,max:%.4f,avg:%.4f ", settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
-			dl->AddText(ImVec2(x, y), IM_COL32(180, 120, 120, 140), b); y += lh;
-		}
+        if (settings.debug) {
+            snprintf(lines[nLines].text, 128, "neighbor count  min:%d  max:%d  avg:%d",
+                settings.min_n, settings.max_n, settings.avg_n);
+            lines[nLines++].col = IM_COL32(180, 120, 120, 140);
 
-        if (!settings.nopause)
-            dl->AddText(ImVec2(x, y), IM_COL32(188, 100, 100, 230), "PAUSED  --  Space to resume");
-        else
-            dl->AddText(ImVec2(x, y), IM_COL32(96, 168, 128, 170), "running");
+            snprintf(lines[nLines].text, 128, "density  min:%.4f  max:%.4f  avg:%.4f",
+                settings.min_density, settings.max_density, settings.avg_density);
+            lines[nLines++].col = IM_COL32(180, 120, 120, 140);
+
+            snprintf(lines[nLines].text, 128, "near density  min:%.4f  max:%.4f  avg:%.4f",
+                settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
+            lines[nLines++].col = IM_COL32(180, 120, 120, 140);
+        }
+
+        snprintf(lines[nLines].text, 128, "%s",
+            settings.nopause ? "running" : "PAUSED  --  Space to resume");
+        lines[nLines++].col = settings.nopause
+            ? IM_COL32(96, 168, 128, 170)
+            : IM_COL32(188, 100, 100, 230);
+
+        // ── Measure widest line ───────────────────────────────────────────────
+        float maxW = 0.0f;
+        for (int i = 0; i < nLines; i++) {
+            float w = ImGui::CalcTextSize(lines[i].text).x;
+            if (w > maxW) maxW = w;
+        }
+
+        // ── Dark background rect ──────────────────────────────────────────────
+        dl->AddRectFilled(
+            ImVec2(x - pad, y0 - pad * 0.5f),
+            ImVec2(x + maxW + pad, y0 + nLines * lh + pad * 0.5f),
+            IM_COL32(8, 8, 10, 185),
+            4.0f   // corner rounding
+        );
+
+        // ── Draw text lines ───────────────────────────────────────────────────
+        float y = y0;
+        for (int i = 0; i < nLines; i++) {
+            dl->AddText(ImVec2(x, y), lines[i].col, lines[i].text);
+            y += lh;
+        }
     }
 
     // ── Floating detached-tab windows ─────────────────────────────────────────

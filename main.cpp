@@ -828,9 +828,10 @@ int main()
 
                 settings.accumulator -= settings.fixedDt;
                 
-                if (settings.avgFps < 5) {
-                    settings.recordSim = true;
-                }
+              /*  if (settings.avgFps < 3 &&) {
+                    settings.totalBodies = settings.count/2;
+                    restartSimulation();
+                }*/
             }
             
         }

@@ -11,7 +11,7 @@ struct param {
 	float heatMultiplier = 15.0f;
 	float h = 4.0f;
 	float h2 = h * h;
-	float rest_density = 0.01600f;
+	float rest_density = 0.01800f;
 	float pressure = 250.0f;
 	float nearpressure = 407.0f;
 	float visc = 0.11f;
@@ -28,7 +28,7 @@ struct param {
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
-	float cellSize = 1.0f;
+	float cellSize = 1.2f;
 	float nearRestDensity = 0.153f;//not used atall wasted variable :D
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
@@ -59,16 +59,13 @@ struct param {
 	float floorbounz = floorbounds * 0.5f;
 	float floorboun_z = -floorbounds * 0.5f;
 
-	// ── Rendering ────────────────────────────────────────────────────────────
 	float gaussSigma = 4.0f;
 	float bgColorR = 0.11373f, bgColorG = 0.11373f, bgColorB = 0.11373f;
 
-	// Retune: brighter cyan edge, darker saturated deep (matches Lague reference)
 	float shallowColorR = 0.05f, shallowColorG = 0.55f, shallowColorB = 0.65f;
 	float deepColorR = 0.01f, deepColorG = 0.06f, deepColorB = 0.18f;
 	float absorption = 0.8f;
 
-	// DEPRECATED — kept to avoid breaking existing binary saves. Use blurWorldRadius.
 	float blurSigma = 14.0f;
 
 	
@@ -77,11 +74,9 @@ struct param {
 	float boundsSizeX = 5.0f, boundsSizeY = 5.0f, boundsSizeZ = 5.0f;
 	float skyZenithR = 0.53f, skyZenithG = 0.81f, skyZenithB = 0.98f;
 	float skyHorizonR = 0.85f, skyHorizonG = 0.91f, skyHorizonB = 0.97f;
-	//float reflStrength = 0.8f;   // unused by SSF composite — sky reflection removed
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
-	// Feature 2: per-channel Beer-Lambert extinction — match Lague reference (X:1.8 Y:0.5 Z:0.3)
 	float extinctionR = 1.80f, extinctionG = 0.50f, extinctionB = 0.30f;
 	float mx = 50.0f, mz = 50.0f, my = 75.0f;
 	float nx = -50.0f, nz = -50.0f, ny = 25.0f;
@@ -89,13 +84,10 @@ struct param {
 	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
 
 	float sunIntensity = 1.5f;
-	// DEPRECATED — replaced by full Snell's law refraction. Kept for binary compat.
 	float refrStrength = 0.008f;
 
-	// Feature 3: fake volumetric self-shadow strength — unused (shadow term removed)
 	//float shadowStrength = 1.5f;
 
-	// -- Bilateral blur (replaces fixed blurSigma) --
 	float blurWorldRadius = 1.3870f;    // world-space kernel radius
 	float blurStrength = 0.250f;    // sigma scale factor
 	float blurDiffStrength = 0.1f;     // depth-similarity falloff
@@ -110,10 +102,10 @@ struct param {
 	int min_n, max_n, avg_n = 0;
 	int samplecount = totalBodies;
 	int flowcount = 10;
-	int substeps = 2;
+	int substeps = 1;
 	int fpsCount = 0;
 	int pressureMode = 0;
-	int shaderType = 0;
+	int shaderType = 1;
 	int samplen = 1;
 	int blurMaxRadius = 32;    
 	int cframe = 30;// screen-space pixel radius cap

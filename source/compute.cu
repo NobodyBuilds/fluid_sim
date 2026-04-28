@@ -125,6 +125,15 @@ int *ncount = nullptr; // saves nighbor count per particle to apply airdrag late
 // stroage for sorting
 float4 *positions_sorted = nullptr;
 float4 *velocity_sorted = nullptr;
+float4* accelration_sorted = nullptr;
+
+// constant struct for kernels to reduce memory occupancy and register load, also to avoid passing too many parameters to kernels which can cause register spilling and performance degradation
+struct data {
+    float dt = 1 / 120.0f;
+
+};
+
+
 
 extern "C" bool initgpu(int count)
 {
@@ -135,6 +144,7 @@ extern "C" bool initgpu(int count)
 
     cudaMalloc(&positions_sorted, count * sizeof(float4));
     cudaMalloc(&velocity_sorted, count * sizeof(float4));
+	cudaMalloc(&accelration_sorted, count * sizeof(float4));
     cudaMalloc(&ncount, count * sizeof(int));
 
     printf("Total particle mem allocated: %.2f MB\n", (count * (5 * sizeof(float4) + sizeof(int))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
@@ -154,11 +164,13 @@ extern "C" void freegpu()
     cudaFree(velocity);
     cudaFree(velocity_sorted);
     cudaFree(accelration);
-    cudaFree(ncount);
+    cudaFree(accelration_sorted);
+	cudaFree(ncount);
     positions = nullptr;
     velocity = nullptr;
     accelration = nullptr;
-    ncount = nullptr;
+    accelration_sorted = nullptr;
+	ncount = nullptr;
 };
 
 struct GLVertex
@@ -462,9 +474,11 @@ __global__ void reorderParticlesKernel(
     const int *__restrict__ sortedIndex, // d_particleIndex (after CUB sort)
     const float4 *__restrict__ posIn,
     const float4 *__restrict__ velIn,
+	const float4* __restrict__ aclIn,
 
     float4 *posOut,
-    float4 *velOut
+    float4 *velOut,
+	float4* aclOut
 
 )
 {
@@ -475,6 +489,7 @@ __global__ void reorderParticlesKernel(
     int src = sortedIndex[i]; // where this particle CAME from in the original array
     float4 pi = __ldg(&posIn[src]);
     float4 vi = __ldg(&velIn[src]);
+	float4 ai = __ldg(&aclIn[src]);
     // using pridicted positiopn into sorted arrays for density and pressure kernel  and help in stability
     // directly writeing to sorted arrays to avoid extra copy and also we will be using predicted position for density and pressure calculation which will help in stability
     float px = pi.x + vi.x * dt;
@@ -483,6 +498,7 @@ __global__ void reorderParticlesKernel(
 
     posOut[i] = {px, py, pz, pi.w};
     velOut[i] = vi;
+	aclOut[i] = ai;
 }
 
 __global__ void clearActiveCellsKernel(
@@ -553,8 +569,8 @@ void buildDynamicGrid(
     reorderParticlesKernel<<<blocks, THREADS>>>(
         numParticles, dt,
         d_particleIndex,     // tells us: sorted slot i came from original slot src
-        positions, velocity, // source
-        positions_sorted, velocity_sorted);
+        positions, velocity,accelration, // source
+        positions_sorted, velocity_sorted, accelration_sorted);
 }
 
 // sph-functions
@@ -678,7 +694,7 @@ __global__ void computePressure(
     const float4 *__restrict__ pos,
     float4 *acl,
     float4 *vel,
-    float4 *velocity,
+    
     float dt,
 
     float st,
@@ -818,14 +834,29 @@ __global__ void computePressure(
     accl.x = (force.x + visc.x)/rho_i;
     accl.y = (force.y + visc.y)/rho_i;
     accl.w = 0.0f;
-    int org = particleIndex[i]; // where this particle came from in the original unsorted array
+   // int org = particleIndex[i]; // where this particle came from in the original unsorted array
                                 // velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy
-    ncount[org] = neighborCount;
-    acl[org] += accl; // write back to original slot in acl array
+    ncount[i] = neighborCount;
+    acl[i] += accl; // write back to original slot in acl array
     // velocity verlet intigration fisrt step
-    velocity[org].x += accl.x * dt * 0.5;
+    /*velocity[org].x += accl.x * dt * 0.5;
     velocity[org].y += accl.y * dt * 0.5;
-    velocity[org].z += accl.z * dt * 0.5;
+    velocity[org].z += accl.z * dt * 0.5;*/
+}
+
+__global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= numParticles)
+        return;
+    int org = particleindex[i]; // where this particle came from in the original unsorted array
+  float4 accl=__ldg(&aclin[i]);
+  aclout[org] = accl;
+  float4 v;
+  v.x =  accl.x * dt * 0.5;
+  v.y =  accl.y * dt * 0.5;
+  v.z =  accl.z * dt * 0.5;
+
+  vel[org] += v;
 }
 
 __device__ void atomicMinFloat(float *addr, float val)
@@ -1201,10 +1232,14 @@ extern "C" void computephysics(float dt)
                 computeDensity<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, settings.rest_density, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.nearpressure, settings.pressure, settings.pollycoef6, settings.spikycoef, settings.Sdensity, settings.ndensity, settings.particleMass);
 
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
-                computePressure<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration, velocity_sorted, velocity, deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.wallrep, settings.walldst, settings.pressure, settings.particleMass, ncount, settings.ndensity);
+                computePressure<<<blocks, THREADS>>>(totalBodies, settings.h, d_cellsize, settings.nearpressure, settings.rest_density, positions_sorted, accelration_sorted, velocity_sorted, deltaTime, settings.visc, HASH_TABLE_SIZE, settings.h2, d_cellStart, d_cellEnd, d_particleIndex, settings.spikygradv, settings.viscosity, settings.pollycoef6, settings.minZ, settings.minX, settings.minY, settings.maxX, settings.maxY, settings.maxz, settings.wallrep, settings.walldst, settings.pressure, settings.particleMass, ncount, settings.ndensity);
+
+				scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex);
+            
             }
+
         }
-        // DEBUG INFO not always active
+        // DEBUG INFO no always active
         static int framecount = 0;
         ++framecount;
         if (framecount >= 100 && settings.debug == true)
@@ -1225,7 +1260,6 @@ extern "C" void computephysics(float dt)
             cudaMemcpyToSymbol(max_nearDensity, &fnbig, sizeof(float));
             cudaMemcpyToSymbol(avg_nearDensity, &fzero, sizeof(float));
 
-            // run — use sorted arrays, that's where density lives
             debug<<<blocks, THREADS>>>(totalBodies, positions_sorted, velocity_sorted, ncount);
             cudaDeviceSynchronize();
 
