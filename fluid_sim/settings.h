@@ -7,14 +7,14 @@ struct param {
 	float size = 1.0f;
 	float particleMass = 0.20f;
 	float cold = 4.500f;
-	float spacing = 1.01f;
+	float spacing = 0.71f;
 	float heatMultiplier = 15.0f;
 	float h = 4.0f;
 	float h2 = h * h;
 	float rest_density = 0.01800f;
 	float pressure = 250.0f;
-	float nearpressure = 407.0f;
-	float visc = 0.11f;
+	float nearpressure = 400.0f;
+	float visc = 0.0529f;
 	float gravityforce = 20.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
@@ -78,8 +78,8 @@ struct param {
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
 	float extinctionR = 1.80f, extinctionG = 0.50f, extinctionB = 0.30f;
-	float mx = 50.0f, mz = 50.0f, my = 75.0f;
-	float nx = -50.0f, nz = -50.0f, ny = 25.0f;
+	float mx = 75.0f, mz = 50.0f, my = 75.0f;
+	float nx = -75.0f, nz = -50.0f, ny = 25.0f;
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
 	float movex = 0.0f, movey = 0.0f, movez = 0.0f;
 
@@ -101,7 +101,7 @@ struct param {
 	int count = totalBodies;
 	int min_n, max_n, avg_n = 0;
 	int samplecount = totalBodies;
-	int flowcount = 10;
+	int flowcount = 18;
 	int substeps = 1;
 	int fpsCount = 0;
 	int pressureMode = 0;
@@ -120,5 +120,36 @@ struct param {
 	bool recordSim = false;
 	bool spawnstate = true;
 	bool cf = false;
+	bool h_cob;
+	bool gui = true;
 };
 extern param settings;
+
+struct data {
+	float dt;
+	float downf;
+	float particlemass;
+	float minX, minY, minZ, maxX, maxY, maxZ;
+	float mx, nx, my, ny, mz, nz;
+	float restitution;
+	float h;
+	float spacing;
+	float ndensity;
+	float sdensity;
+	float h2;
+	float pollycoef6;
+	float spikycoef;
+	float rep;
+	float dst;
+	float pressure;
+	float nearpressure;
+	float restDensity;
+	float spikyGradv;
+	float viscK;
+	float viscstrength;
+	
+	int count;
+	int flowcount;
+};
+
+extern data gpudata;

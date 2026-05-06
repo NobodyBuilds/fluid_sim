@@ -162,8 +162,5 @@ extern "C" void initFloor()
     {
         printf(" floor error %s", glGetString(err));
     }
-    else
-    {
-        printf("initfloor\n");
-    }
+   
 }

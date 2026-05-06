@@ -11,7 +11,7 @@ static bool predown = false;
 static bool f11down = false;
 static bool xdown = false;
 static bool runstatedown = false;
-
+static bool hdown = false;
 
 
 extern "C" void buttons(GLFWwindow* window){
@@ -21,7 +21,7 @@ extern "C" void buttons(GLFWwindow* window){
    
     bool down = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
 
-    if (down && !predown)
+    if (down && !predown && !settings.h_cob)
     {
         if (settings.nopause == true) {
             settings.nopause = false;
@@ -60,6 +60,17 @@ extern "C" void buttons(GLFWwindow* window){
     xdown = x;
 
     
+bool h = glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS;
+    if (h && !hdown)
+    {
+        if (settings.gui == true) {
+            settings.gui = false;
+        }
+        else if (settings.gui == false) {
+            settings.gui = true;
+        }
+    }
+	hdown = h;
 
 
 }

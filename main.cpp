@@ -343,6 +343,7 @@ void restartSimulation()
         freegpu();
         return;
     }
+    syncstruct();
     initFloor();
     registerBodies();
     settings.nopause = false;
@@ -764,7 +765,7 @@ int main()
         freegpu();
         return -1;
     }
-
+	syncstruct();
     ensureVBOCapacity((size_t)settings.maxparticles * 3);
     registerGLBuffer(vbo);
 
@@ -789,8 +790,10 @@ int main()
     {
 
         glfwPollEvents();
-
-        ui_init();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        if (settings.gui) { ui_init(); }
         if (settings.count >= (settings.maxparticles) * 0.98f)
         {
             settings.addParticle = false;
@@ -810,7 +813,13 @@ int main()
         settings.wx = camera.position.x;
         settings.wy = camera.position.y;
         settings.wz = camera.position.z;
+        if (settings.shaderType ==0) {
+            settings.size = 1.15f;
 
+        }
+        else {
+			settings.size = 1.0f;
+        }
         if (settings.recordSim)
         {
 

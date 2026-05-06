@@ -274,6 +274,7 @@ static void DrawQuickContent()
         }
         ImGui::PopStyleColor(3);
         ImGui::SetItemTooltip("Toggle pause / resume.  Same as Space.");
+        
     }
 
     ImGui::Spacing();
@@ -325,6 +326,7 @@ static void DrawQuickContent()
     if (DangerButton("Restart"))
         restartSimulation();
     ImGui::SetItemTooltip("Wipe all particles and respawn with current settings.");
+
 }
 
 // ─── FLUID ───────────────────────────────────────────────────────────────────
@@ -463,7 +465,7 @@ static void DrawWorldContent()
 {
     // ── Bounding box ──────────────────────────────────────────────────────────
     Sec("Bounding Box");
-    ImGui::TextDisabled("Drag — updates in real time.");
+    ImGui::TextDisabled("Drag .");
     ImGui::Spacing();
 
    
@@ -480,7 +482,7 @@ static void DrawWorldContent()
                 if(settings.spawnstate){  restartSimulation();}
                 settings.mx = settings.maxX;}
             initFloor();
-        }
+        }SYNC;
         ImGui::SetItemTooltip("Right wall X.  Drag left to shrink.");
         ImGui::TableSetColumnIndex(1);
         float change_x = settings.minX;
@@ -494,7 +496,7 @@ static void DrawWorldContent()
 
            
             initFloor();
-        }
+        }SYNC;
         ImGui::SetItemTooltip("Left wall X.");
 
         ImGui::TableNextRow();
@@ -509,7 +511,7 @@ static void DrawWorldContent()
                 settings.mz = settings.maxz;}
 
             initFloor();
-        }
+        }SYNC;
         ImGui::SetItemTooltip("wall Y.");
         ImGui::TableSetColumnIndex(1);
         float change_y = settings.minZ;
@@ -521,7 +523,7 @@ static void DrawWorldContent()
                     if(settings.spawnstate){  restartSimulation();}
                     settings.nz = settings.minZ;}
             initFloor();
-        }
+        }SYNC;
         ImGui::SetItemTooltip("wall -z.");
 
         ImGui::TableNextRow();
@@ -531,7 +533,7 @@ static void DrawWorldContent()
              if(settings.my>settings.maxY ){
                 if(settings.spawnstate){  restartSimulation();}
                 settings.my = settings.maxY;}
-        }
+        }SYNC;
 
         ImGui::SetItemTooltip("Back wall Z.");
     
@@ -554,9 +556,9 @@ static void DrawWorldContent()
                 settings.nx -= 10.0f;
              }
             initbox = true;
-        }
+        }SYNC;
 
-        if (ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f, settings.minY, settings.maxY)) {
+        if (ImGui::DragFloat("spawn grid y", &settings.expandy, 0.5f,-10.0f, settings.maxY)) {
             float change = settings.expandy;
             settings.ny -= change;
             settings.my += change;
@@ -568,7 +570,7 @@ static void DrawWorldContent()
                 settings.ny -= 10.0f;
             }
             initbox = true;
-        }
+        }SYNC;
 
         if (ImGui::DragFloat("spawn grid z", &settings.expandz, 0.5f, settings.minZ, settings.maxz)) {
             float change = settings.expandz;
@@ -582,7 +584,7 @@ static void DrawWorldContent()
                 settings.nz -= 10.0f;
             }
             initbox = true;
-        }
+        }SYNC;
 
 
         if (ImGui::DragFloat("move in x  dir ", &settings.movex, 0.5f, settings.minX, settings.maxX)) {
@@ -594,8 +596,8 @@ static void DrawWorldContent()
             settings.movex = 0.0f;
             initbox = true;
 
-        }
-        if (ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, settings.minY, settings.maxY)) {
+        }SYNC;
+        if (ImGui::DragFloat("move in y  dir ", &settings.movey, 0.5f, -10.0f, settings.maxY)) {
             float delta = settings.movey;
             if (settings.my >= settings.maxY && delta > 0.0f) delta = 0.0f;
             if (settings.ny <= settings.minY && delta < 0.0f) delta = 0.0f;
@@ -603,7 +605,7 @@ static void DrawWorldContent()
             settings.ny += delta;
             settings.movey = 0.0f;
             initbox = true;
-        }
+        }SYNC;
         if (ImGui::DragFloat("move in z  dir ", &settings.movez, 0.5f, settings.minZ, settings.maxz)) {
             float delta = settings.movez;
             if (settings.mz >= settings.maxz && delta > 0.0f) delta = 0.0f;
@@ -612,7 +614,7 @@ static void DrawWorldContent()
             settings.nz += delta;
             settings.movez = 0.0f;
             initbox = true;
-        }
+        } SYNC;
         if (initbox) { initBoundingBox(); restartSimulation(); initbox = false; }
     }
 
@@ -879,9 +881,9 @@ static void DrawHelpContent()
 // ═════════════════════════════════════════════════════════════════════════════
 void ui_init()
 {
-    ImGui_ImplOpenGL3_NewFrame();
+    /*ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+    ImGui::NewFrame();*/
     ApplyTheme();
 
     // FPS ring update
@@ -944,6 +946,17 @@ void ui_init()
             ? IM_COL32(96, 168, 128, 170)
             : IM_COL32(188, 100, 100, 230);
 
+            if (settings.h_cob) {
+                lines[nLines].col = IM_COL32(255, 0, 0, 225);
+                snprintf(lines[nLines++].text, 128, "======== WARNING ========");
+
+                lines[nLines].col = IM_COL32(255, 0, 0, 225);
+                snprintf(lines[nLines++].text, 128, "increase bounding box or reduce count");
+
+                lines[nLines].col = IM_COL32(255, 0, 0, 225);
+                snprintf(lines[nLines++].text, 128, "=========================");
+            };
+        
         // ── Measure widest line ───────────────────────────────────────────────
         float maxW = 0.0f;
         for (int i = 0; i < nLines; i++) {
@@ -966,6 +979,8 @@ void ui_init()
             y += lh;
         }
     }
+
+	if (syncsettings) { syncstruct(); syncsettings = false; }
 
     // ── Floating detached-tab windows ─────────────────────────────────────────
     //  Rendered BEFORE the sidebar so they sit on top when overlapping.
@@ -1076,6 +1091,7 @@ void ui_init()
             ImGui::TextDisabled("Click [pin] in any floating window to restore it here.");
         }
     }
+    
 
     ImGui::End();  // ##panel
 

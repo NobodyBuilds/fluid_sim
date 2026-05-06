@@ -8,6 +8,7 @@ extern "C" {
 	bool initgpu(int count);
 	void  freeDynamicGrid();
 	void freegpu();
+	void syncstruct();
 	
 	bool initDynamicGrid(int totalbodies);
 
