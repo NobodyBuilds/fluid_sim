@@ -2,20 +2,20 @@
 struct param {
 	// === FLOAT VARIABLES (4 bytes each) ===
 	// Grouped for cache locality and alignment
-	float fixedDt = 1 / 120.0f;
+	float fixedDt = 1 / 60.0f;
 	float simspeed = 1.0f;
 	float size = 1.0f;
 	float particleMass = 0.20f;
 	float cold = 4.500f;
-	float spacing = 0.71f;
+	float spacing = 0.48f;
 	float heatMultiplier = 15.0f;
 	float h = 4.0f;
 	float h2 = h * h;
 	float rest_density = 0.01800f;
-	float pressure = 250.0f;
-	float nearpressure = 400.0f;
+	float pressure = 200.0f;
+	float nearpressure = 450.0f;
 	float visc = 0.0529f;
-	float gravityforce = 20.0f;
+	float gravityforce = 60.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -125.0f;
@@ -28,7 +28,7 @@ struct param {
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
-	float cellSize = 1.2f;
+	float cellSize = 1.0f;
 	float nearRestDensity = 0.153f;//not used atall wasted variable :D
 	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
@@ -46,6 +46,8 @@ struct param {
 	float fps = 0.0f;
 	float walldst = 0.25f;
 	float wallrep = 58.0f;
+
+	
 
 	float tilesize = 5.0f;
 	float variationStrength = 0.15f;
@@ -94,7 +96,6 @@ struct param {
 	float refrMult = 1.8f;     // refraction ray march scale
 
 	double fuc_ms = 0.0;
-
 	// === INT VARIABLES (4 bytes each) ===
 	int totalBodies = 60000;
 	int maxparticles = totalBodies * 5;
@@ -102,7 +103,7 @@ struct param {
 	int min_n, max_n, avg_n = 0;
 	int samplecount = totalBodies;
 	int flowcount = 18;
-	int substeps = 1;
+	int substeps = 2;
 	int fpsCount = 0;
 	int pressureMode = 0;
 	int shaderType = 1;
@@ -144,9 +145,13 @@ struct data {
 	float pressure;
 	float nearpressure;
 	float restDensity;
+	float nearrestdensity;
 	float spikyGradv;
 	float viscK;
 	float viscstrength;
+	float surfacetension;
+	float epsilon;
+	
 	
 	int count;
 	int flowcount;

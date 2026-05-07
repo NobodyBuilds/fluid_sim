@@ -151,7 +151,7 @@ extern "C" void syncstruct() {
 	h.ny = settings.ny;
 	h.mz = settings.mz;
 	h.nz = settings.nz;
-
+	h.nearrestdensity = settings.nearRestDensity;
 	h.restitution = settings.restitution;
 	h.h = settings.h;
 	h.spacing = settings.spacing;
@@ -168,10 +168,10 @@ extern "C" void syncstruct() {
 	h.spikyGradv = settings.spikygradv;
 	h.viscK = settings.visc;
 	h.viscstrength = settings.viscosity;
-	
 	h.viscK = settings.visc;
     h.count = settings.count;
 	h.flowcount = settings.flowcount;
+	
 
 	cudaMemcpyToSymbol(d, &h, sizeof(data));
 
@@ -189,6 +189,8 @@ extern "C" bool initgpu(int count)
 	cudaMalloc(&accelration_sorted, count * sizeof(float4));
     cudaMalloc(&ncount, count * sizeof(int));
 	cudaMalloc(&d_cob, count * sizeof(int));
+
+    
 
     printf("Total particle mem allocated: %.2f MB\n", (count * (5 * sizeof(float4) + sizeof(int))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
 
@@ -208,7 +210,9 @@ extern "C" void freegpu()
     cudaFree(velocity_sorted);
     cudaFree(accelration);
     cudaFree(accelration_sorted);
+
 	cudaFree(ncount);
+
     cudaFree(d_cob);
 	d_cob = nullptr;
     positions = nullptr;
@@ -713,10 +717,10 @@ __global__ void computeDensity(float cellSize,float4 *pos,float4 *vel,int hs,con
               rho);
      }*/
 
-   // pos[i].w = fmaxf(rho, mindensity);
-   // vel[i].w = fmaxf(rhon, mindensity );
-    pos[i].w = rho;
-    vel[i].w = rhon;
+    pos[i].w = fmaxf(rho, mindensity);
+    vel[i].w = fmaxf(rhon, mindensity );
+    //pos[i].w = rho;
+    //vel[i].w = rhon;
 }
 
 __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,float4 *acl,float4 *vel, int hs, int *cellstart, int *cellend,int *particleIndex, int *ncount)
@@ -751,7 +755,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
 
     float p_i = d.pressure * (p.w - d.restDensity);
     float pn_i = d.nearpressure * v.w ;
-
+   
     float3 visc = {0.0f, 0.0f, 0.0f};
 
     float3 vi = make_float3(v.x, v.y, v.z);
@@ -763,6 +767,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     int cellsWithParticles = 0;
     float rho_i = p.w;
     float nrho_i = v.w;
+
 
     float pressuretermRho_i = p_i / (rho_i * rho_i);
     float NpressuretermRho_i = pn_i / (nrho_i * nrho_i);
@@ -839,7 +844,11 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
 
                         float lapW = d.viscK * x;
                         float viscosityCoeff = d.viscstrength;
-                        visc += viscosityCoeff * m_j * vij / (rho_i * rho_j) * lapW;
+                        visc += viscosityCoeff * m_j * vij / rho_j * lapW;
+
+                       
+
+                      
                     }
                 }
             }
@@ -847,11 +856,15 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     }
 
     float4 accl;
+    float4 delta;
 
-    accl.z = (force.z + visc.z)/d.particlemass;
-    accl.x = (force.x + visc.x)/d.particlemass;
-    accl.y = (force.y + visc.y)/d.particlemass;
+    accl.z = (force.z + visc.z)/rho_i;
+    accl.x = (force.x + visc.x)/rho_i;
+    accl.y = (force.y + visc.y)/rho_i;
     accl.w = 0.0f;
+
+    
+	
    // int org = particleIndex[i]; // where this particle came from in the original unsorted array
                                 // velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy
     ncount[i] = neighborCount;
@@ -862,6 +875,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     velocity[org].z += accl.z * dt * 0.5;*/
 }
 
+
 __global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles)
@@ -871,10 +885,12 @@ __global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* acl
   aclout[org] = accl;
   float4 v;
   v.x =  accl.x * dt * 0.5;
-  v.y =  accl.y * dt * 0.5;
+  v.y =  (accl.y - d.downf) * dt * 0.5;
   v.z =  accl.z * dt * 0.5;
 
   vel[org] += v;
+
+  
 }
 
 __device__ void atomicMinFloat(float *addr, float val)
@@ -954,9 +970,8 @@ __global__ void updateKernel( float dt,float4 *pos, float4 *vel, float4 *acl
     float4 vl = __ldg(&vel[i]);
     float4 a = __ldg(&acl[i]);
     vl.x += a.x * dt * 0.5f;
-    vl.y += a.y * dt * 0.5f;
+    vl.y += (a.y - d.downf) * dt * 0.5f;
     vl.z += a.z * dt * 0.5f;
-    vl.y -= (d.downf/d.particlemass) *dt;
    
     
 
@@ -968,9 +983,10 @@ __global__ void updateKernel( float dt,float4 *pos, float4 *vel, float4 *acl
         vl.z *= drag;
     }*/
 
-    p.x += vl.x * dt;
-    p.y += vl.y * dt;
-    p.z += vl.z * dt;
+
+    p.x += vl.x* dt;
+    p.y += vl.y* dt;
+    p.z += vl.z* dt;
 
     a.x = 0;
     a.y = 0;
@@ -1255,8 +1271,9 @@ extern "C" void computephysics(float dt)
 
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
                 computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount);
+				
+                scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex);
 
-				scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex);
             
             }
 

@@ -301,14 +301,14 @@ static void DrawQuickContent()
     }
     ImGui::SetItemTooltip("Smoothing radius.  All kernel coefficients update automatically.");
 
-    ImGui::DragFloat("Rest rho##q", &settings.rest_density, 0.5f, 0.0f, 10000.f, "%.1f"); SYNC;
+    ImGui::DragFloat("Rest rho##q", &settings.rest_density, 0.0005f, 0.0f, 1.0f, "%.5f"); SYNC;
     ImGui::SetItemTooltip("Target equilibrium density.  Higher = particles draw together.");
 
-    ImGui::DragFloat("Stiffness k##q", &settings.pressure, 10.0f, 0.0f, 200000.f, "%.0f"); SYNC;
+    ImGui::DragFloat("Stiffness k##q", &settings.pressure, 2.0f, 0.0f, 5000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Compression resistance.  Start low, increase gradually.");
 
-    ImGui::DragFloat("Near k'##q", &settings.nearpressure, 1.0f, 0.0f, 200000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Short-range repulsion.  Typically 10-50x stiffness k.");
+    ImGui::DragFloat("Near k'##q", &settings.nearpressure, 2.0f, 0.0f, 10000.f, "%.0f"); SYNC;
+    ImGui::SetItemTooltip("Short-range repulsion.  In this solver, keep it near the same order as stiffness k.");
 
     ImGui::DragFloat("Viscosity##q", &settings.visc, 0.01f, 0.0f, 200.f, "%.3f"); SYNC;
     ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey.");
@@ -365,10 +365,10 @@ static void DrawFluidContent()
 
     // ── Pressure ─────────────────────────────────────────────────────────────
     Sec("Pressure");
-    ImGui::DragFloat("Stiffness k##fl", &settings.pressure, 10.f, 0.f, 200000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100, increase gradually.");
-    ImGui::DragFloat("Near k'##fl", &settings.nearpressure, 1.f, 0.f, 200000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Typically 10-50x k.");
+    ImGui::DragFloat("Stiffness k", &settings.pressure, 2.f, 0.f, 5000.f, "%.0f"); SYNC;
+    ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100-500, increase gradually.");
+    ImGui::DragFloat("Near k'", &settings.nearpressure, 2.f, 0.f, 10000.f, "%.0f"); SYNC;
+    ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Keep near the same order as k.");
 
     
     // ── Viscosity ─────────────────────────────────────────────────────────────
@@ -389,7 +389,6 @@ static void DrawFluidContent()
 	ImGui::DragFloat("airdrag##fl", &settings.airdrag, 0.001f, 0.f, 1.f, "%.3f"); SYNC;
 	ImGui::SetItemTooltip("Dampening factor applied to velocity each step.  Simulates air resistance.  0 = no drag.  0.1 = mild drag.  0.5 = heavy drag.");
 	ImGui::DragFloat("cellsize##fl", &settings.cellSize, 0.01f, 0.01f, 4.f, "%.2f"); SYNC;
-	
 
     // ── Pipeline toggles ──────────────────────────────────────────────────────
     Sec("Pipeline");
@@ -418,7 +417,7 @@ static void DrawParticlesContent()
     if (ImGui::IsItemDeactivatedAfterEdit()) {  syncsettings = true; }
     ImGui::SetItemTooltip("Visual + collision radius.  Restart required.");
 
-    ImGui::InputFloat("Mass##pt", &settings.particleMass, 0.1f, 0.5f, "%.3f");
+    ImGui::InputFloat("Mass##pt", &settings.particleMass, 0.1f, 0.5f, "%.3f"); SYNC;
    
     ImGui::SetItemTooltip("Particle mass.  Affects pressure and density contributions.");
 
@@ -859,7 +858,7 @@ static void DrawHelpContent()
         "Compression resistance.  Too high = instability.  "
         "Start low (~100-500), increase gradually while watching substeps.");
     Tip("Near k'",
-        "Short-range repulsion.  Raise when particles clump.  Typically 10-50x k.");
+        "Short-range repulsion.  Raise when particles clump.  In this solver it should usually stay near the same order as k.");
     Tip("Viscosity",
         "Velocity averaging between neighbours.  Low = water.  High = honey.");
     Tip("Substeps",

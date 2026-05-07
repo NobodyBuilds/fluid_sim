@@ -430,7 +430,7 @@ void calcKernels()
     float h9 = h3 * h3 * h3;
 
     //  settings.rest_density = 0.1036f * powf(3.5f / settings.h, 3.0f);
-
+    
     settings.pollycoef6 = 315.0f / (64.0f * settings.pi * h9);
     // settings.spikycoef2 = 15.0f / (settings.pi * h5);
     settings.Sdensity = settings.pollycoef6 * h6; // self density at r=0
@@ -439,6 +439,8 @@ void calcKernels()
     settings.spikygradv = -45 / (settings.pi * h6);
     settings.viscosity = 45 / (settings.pi * h6);
     settings.h2 = settings.h * settings.h;
+
+   
 }
 
 void drawAll()
