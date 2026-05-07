@@ -13,21 +13,20 @@ DEMOS
 <img width="1574" height="992" alt="Screenshot 2026-03-22 215431" src="https://github.com/user-attachments/assets/3e141bb0-af5e-4b9e-9e17-45c86015cd5c" />
 
 -------------
---1 MILLION PARTICLES SIMULATED AT 130MS PER FRAME,18x speedup footage
+demo 1
 
 
-https://github.com/user-attachments/assets/5a922ffb-03c7-4e41-95fe-d50627320336
+https://github.com/user-attachments/assets/cf8666d8-42ee-4858-b7d2-43289d918f50
 
----------------
-1 MILLION PARTICLES SIMULATED AT 150MS PER FRAME ON RTX2050A WITH 45W TGP ,25X SPEED UP FOOTAGE
+------------
+demo 2
 
-
-
-
+https://github.com/user-attachments/assets/a17c0f3a-0fe4-4cfb-b847-b9561721a54d
 
 
 
-https://github.com/user-attachments/assets/050982f2-42cd-4b9e-bb81-10b7b968c721
+
+
 
 
 
