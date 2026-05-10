@@ -369,10 +369,12 @@ static void DrawFluidContent()
     ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100-500, increase gradually.");
     ImGui::DragFloat("Near k'", &settings.nearpressure, 2.f, 0.f, 10000.f, "%.0f"); SYNC;
     ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Keep near the same order as k.");
-
+    // xsph 
+    
     
     // ── Viscosity ─────────────────────────────────────────────────────────────
     Sec("Viscosity");
+	ImGui::DragFloat("XSPH##fl", &settings.epsilon, 0.000001f, 0.f, 1.f, "%.9f"); SYNC;
     ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.001f, 0.f, 10.0f, "%.4f"); SYNC;
     ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey / thick fluid.");
   

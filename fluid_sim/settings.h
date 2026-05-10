@@ -12,10 +12,10 @@ struct param {
 	float h = 4.0f;
 	float h2 = h * h;
 	float rest_density = 0.01800f;
-	float pressure = 200.0f;
+	float pressure = 500.0f;
 	float nearpressure = 450.0f;
 	float visc = 0.0529f;
-	float gravityforce = 60.0f;
+	float gravityforce = 90.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -125.0f;
@@ -47,7 +47,7 @@ struct param {
 	float walldst = 0.25f;
 	float wallrep = 58.0f;
 
-	
+	float epsilon = 0.00015f;
 
 	float tilesize = 5.0f;
 	float variationStrength = 0.15f;
@@ -66,7 +66,7 @@ struct param {
 
 	float shallowColorR = 0.05f, shallowColorG = 0.55f, shallowColorB = 0.65f;
 	float deepColorR = 0.01f, deepColorG = 0.06f, deepColorB = 0.18f;
-	float absorption = 0.8f;
+	float absorption = 2.0f;
 
 	float blurSigma = 14.0f;
 
@@ -79,7 +79,7 @@ struct param {
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
-	float extinctionR = 1.80f, extinctionG = 0.50f, extinctionB = 0.30f;
+	float extinctionR = 0.6270f, extinctionG = 0.110f, extinctionB = 0.0f;
 	float mx = 75.0f, mz = 50.0f, my = 75.0f;
 	float nx = -75.0f, nz = -50.0f, ny = 25.0f;
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
@@ -103,7 +103,7 @@ struct param {
 	int min_n, max_n, avg_n = 0;
 	int samplecount = totalBodies;
 	int flowcount = 18;
-	int substeps = 2;
+	int substeps = 3;
 	int fpsCount = 0;
 	int pressureMode = 0;
 	int shaderType = 1;

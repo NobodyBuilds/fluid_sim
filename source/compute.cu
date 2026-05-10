@@ -126,7 +126,7 @@ int *ncount = nullptr; // saves nighbor count per particle to apply airdrag late
 float4 *positions_sorted = nullptr;
 float4 *velocity_sorted = nullptr;
 float4* accelration_sorted = nullptr;
-
+float3* xsph_delta = nullptr;
 // constant struct for kernels to reduce memory occupancy and register load, also to avoid passing too many parameters to kernels which can cause register spilling and performance 
 
 __constant__ data d;
@@ -171,6 +171,7 @@ extern "C" void syncstruct() {
 	h.viscK = settings.visc;
     h.count = settings.count;
 	h.flowcount = settings.flowcount;
+	h.epsilon = settings.epsilon;
 	
 
 	cudaMemcpyToSymbol(d, &h, sizeof(data));
@@ -189,10 +190,11 @@ extern "C" bool initgpu(int count)
 	cudaMalloc(&accelration_sorted, count * sizeof(float4));
     cudaMalloc(&ncount, count * sizeof(int));
 	cudaMalloc(&d_cob, count * sizeof(int));
+	cudaMalloc(&xsph_delta, count * sizeof(float3));
 
     
 
-    printf("Total particle mem allocated: %.2f MB\n", (count * (5 * sizeof(float4) + sizeof(int))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
+    printf("Total particle mem allocated: %.2f MB\n", (count * (6 * sizeof(float4) +  sizeof(float3) + ( 2* sizeof(int)))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -838,15 +840,16 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
                         force += -m_j * pressureterm * gradW * dir;
 
                         force += -m_j * npressureterm * gradW * dir;
-                        float4 v2 = __ldg(&vel[j]);
-                        float3 vj = make_float3(v2.x, v2.y, v2.z);
-                        float3 vij = (vj - vi);
+                        
+                        
+                            float3 vxj = make_float3(vj.x, vj.y, vj.z);
+                            float3 vij = (vxj - vi);
 
-                        float lapW = d.viscK * x;
-                        float viscosityCoeff = d.viscstrength;
-                        visc += viscosityCoeff * m_j * vij / rho_j * lapW;
+                            float lapW = d.viscK * x;
+                            float viscosityCoeff = d.viscstrength;
+                            visc += viscosityCoeff * m_j * vij / rho_j * lapW;
 
-                       
+                        
 
                       
                     }
@@ -856,7 +859,6 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     }
 
     float4 accl;
-    float4 delta;
 
     accl.z = (force.z + visc.z)/rho_i;
     accl.x = (force.x + visc.x)/rho_i;
@@ -874,19 +876,88 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     velocity[org].y += accl.y * dt * 0.5;
     velocity[org].z += accl.z * dt * 0.5;*/
 }
+__global__ void xsphKernel(
+    float         cellSize,
+    const float4* __restrict__ pos,   
+    const float4* __restrict__ vel,   
+	float3* xsph_delta,
+    int           hs,
+    const int* __restrict__ cellstart,
+    const int* __restrict__ cellend)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= d.count) return;
+
+    float4 pi = __ldg(&pos[i]);
+    float4 vi = __ldg(&vel[i]);
+	float rho_i = fmaxf(pi.w,1e-6f);
+
+    float xi = pi.x, yi = pi.y, zi = pi.z;
+
+    float3 delta = { 0.0f, 0.0f, 0.0f };
+
+    int cx, cy, cz;
+    getCell(xi, yi, zi, cellSize, cx, cy, cz);
+
+    for (int dz = -1; dz <= 1; dz++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+
+                unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
+                int start = cellstart[hash];
+                int end = cellend[hash];
+                if (start == -1) continue;
+
+                for (int k = start; k < end; k++) {
+                    int j = k;
+                    if (j == i) continue;
+
+                    float4 pj = __ldg(&pos[j]);
+                    float dx_val = xi - pj.x;
+                    float dy_val = yi - pj.y;
+                    float dz_val = zi - pj.z;
+                    float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
+
+                    if (r2 < d.h2 && r2 > 1e-9f) {
+                        float v = d.h2 - r2;
+                        float W = d.pollycoef6 * v * v * v;
+
+                        float4 vj = __ldg(&vel[j]);
+                        float rho_j = fmaxf(pj.w, 1e-6f); 
+
+                        float coeff = (2.0f *d.particlemass / (rho_j * rho_i)) * W;
+                        delta.x += coeff * (vj.x - vi.x);
+                        delta.y += coeff * (vj.y - vi.y);
+                        delta.z += coeff * (vj.z - vi.z);
+                    }
+                }
+            }
+        }
+    }
+
+    float eps = d.epsilon;
+    xsph_delta[i].x = eps * delta.x;
+    xsph_delta[i].y = eps * delta.y;
+    xsph_delta[i].z = eps * delta.z;
+}
 
 
-__global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex) {
+__global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex,float3* vs) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles)
         return;
     int org = particleindex[i]; // where this particle came from in the original unsorted array
   float4 accl=__ldg(&aclin[i]);
+  float3 vx = vs[i];
   aclout[org] = accl;
   float4 v;
   v.x =  accl.x * dt * 0.5;
-  v.y =  (accl.y - d.downf) * dt * 0.5;
+  v.y =   (accl.y - d.downf) * dt * 0.5;
   v.z =  accl.z * dt * 0.5;
+
+  v.x += vx.x;
+  v.y += vx.y;
+  v.z += vx.z;
 
   vel[org] += v;
 
@@ -1272,7 +1343,17 @@ extern "C" void computephysics(float dt)
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
                 computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount);
 				
-                scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex);
+                if (settings.epsilon > 0.0f) {
+                
+					xsphKernel << <blocks, THREADS >> > (d_cellsize, positions_sorted, velocity_sorted,xsph_delta, HASH_TABLE_SIZE, d_cellStart, d_cellEnd);
+                }
+                else {
+             
+                      cudaMemsetAsync(xsph_delta, 0, totalBodies * sizeof(float3));
+            
+                }
+
+                scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex,xsph_delta);
 
             
             }
