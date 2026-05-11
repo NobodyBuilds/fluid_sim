@@ -3,7 +3,7 @@ struct param {
 	// === FLOAT VARIABLES (4 bytes each) ===
 	// Grouped for cache locality and alignment
 	float fixedDt = 1 / 60.0f;
-	float simspeed = 1.0f;
+	
 	float size = 1.0f;
 	float particleMass = 0.20f;
 	float cold = 4.500f;
@@ -13,9 +13,9 @@ struct param {
 	float h2 = h * h;
 	float rest_density = 0.01800f;
 	float pressure = 500.0f;
-	float nearpressure = 450.0f;
-	float visc = 0.0529f;
-	float gravityforce = 90.0f;
+	float nearpressure = 1000.0f;
+	float visc = 0.0f;
+	float gravityforce = 98.0f;
 	float pi = 3.14159265358979323846f;
 	float sample_ms = 0.0f;
 	float minX = -125.0f;
@@ -25,6 +25,7 @@ struct param {
 	float minZ = -50.0f;
 	float maxz = 50.0f;
 	float restitution = 0.8f;
+	float flowrate = 0.018f;
 	float pollycoef6 = 0.0f;
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
@@ -47,7 +48,7 @@ struct param {
 	float walldst = 0.25f;
 	float wallrep = 58.0f;
 
-	float epsilon = 0.00015f;
+	float epsilon = 0.0002f;
 
 	float tilesize = 5.0f;
 	float variationStrength = 0.15f;

@@ -278,8 +278,7 @@ static void DrawQuickContent()
     }
 
     ImGui::Spacing();
-    ImGui::SliderFloat("Speed##q", &settings.simspeed, 0.001f, 10.0f, "%.2f"); SYNC;
-    ImGui::SetItemTooltip("dt multiplier.  1.0 = real time.  0.2 = slow-mo.  3.0 = fast-fwd.");
+    
     ImGui::InputInt("Substeps##q", &settings.substeps); SYNC;
     if (settings.substeps < 1) settings.substeps = 1;
     ImGui::SetItemTooltip("Physics steps per frame.  Higher = more stable at large k, but costs linearly more GPU time.");
@@ -451,6 +450,7 @@ static void DrawParticlesContent()
         ImGui::TextDisabled("emitted  %d", settings.samplecount);
 		ImGui::SetItemTooltip("Total particles emitted since start or last restart.");
 		ImGui::DragFloat("spacing##ptem", &settings.spacing, 0.01f, 0.01f, 10.f, "%.2f"); SYNC;
+		ImGui::DragFloat("flow rate##ptem", &settings.flowrate, 0.0001f, 0.0001f, 10.f, "%.5f"); SYNC;
     }
   
 
@@ -795,7 +795,6 @@ static void DrawPerfContent()
         StatRow("Active", "%d", settings.count);
         StatRow("Capacity", "%d", settings.maxparticles);
         StatRow("Substeps", "%d", settings.substeps);
-        StatRow("Speed", "%.2fx", settings.simspeed);
         StatRow("dt", "%.5f s", settings.fixedDt);
         ImGui::EndTable();
     }
@@ -923,8 +922,8 @@ void ui_init()
             settings.wx, settings.wy, settings.wz);
         lines[nLines++].col = IM_COL32(120, 180, 140, 155);
 
-        snprintf(lines[nLines].text, 128, "substeps %d   speed %.2fx",
-            settings.substeps, settings.simspeed);
+        snprintf(lines[nLines].text, 128, "substeps %d",
+            settings.substeps);
         lines[nLines++].col = IM_COL32(120, 120, 118, 148);
 
         if (settings.debug) {

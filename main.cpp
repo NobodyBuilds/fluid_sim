@@ -831,11 +831,11 @@ int main()
         else
         {
 
-            float effectiveDt = settings.fixedDt * settings.simspeed;
+            float effectiveDt = fminf(settings.accumulator, settings.fixedDt * 4.0f);
             while (settings.accumulator >= settings.fixedDt)
             {
 
-                updatePhysics(effectiveDt);
+                updatePhysics(settings.fixedDt);
 
                 settings.accumulator -= settings.fixedDt;
                 
@@ -846,6 +846,7 @@ int main()
             }
             
         }
+        render();
 
         /*if (debugtime > 0.50f) {
             printf("ms %3f\n", sample_ms);

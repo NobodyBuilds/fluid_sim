@@ -656,10 +656,16 @@ __global__ void computeDensity(float cellSize,float4 *pos,float4 *vel,int hs,con
     float mindensity = rho * 0.5f;
 
     // Search 27 neighboring cells
+#pragma unroll 3
+
     for (int dz = -1; dz <= 1; dz++)
     {
+#pragma unroll 3
+
         for (int dy = -1; dy <= 1; dy++)
         {
+#pragma unroll 3
+
             for (int dx = -1; dx <= 1; dx++)
             {
                 /*int manhattanDist = abs(dx) + abs(dy) + abs(dz);
@@ -725,7 +731,7 @@ __global__ void computeDensity(float cellSize,float4 *pos,float4 *vel,int hs,con
     //vel[i].w = rhon;
 }
 
-__global__ void computePressure( float cellSize, const float4 *__restrict__ pos,float4 *acl,float4 *vel, int hs, int *cellstart, int *cellend,int *particleIndex, int *ncount)
+__global__ void computePressure( float cellSize, const float4 *__restrict__ pos,float4 *acl,float4 *vel, int hs, int *cellstart, int *cellend,int *particleIndex, int *ncount, float3 *xsph)
 {
 
     // no shared memory because the arrays are sorted and coalesced access is good enough, also we are doing more computation per neighbor which helps hide latency.
@@ -759,6 +765,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     float pn_i = d.nearpressure * v.w ;
    
     float3 visc = {0.0f, 0.0f, 0.0f};
+    float3 delta = {0.0f, 0.0f, 0.0f};
 
     float3 vi = make_float3(v.x, v.y, v.z);
     int cx, cy, cz;
@@ -773,11 +780,15 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
 
     float pressuretermRho_i = p_i / (rho_i * rho_i);
     float NpressuretermRho_i = pn_i / (nrho_i * nrho_i);
-
+#pragma unroll 3
     for (int dz = -1; dz <= 1; dz++)
     {
+#pragma unroll 3
+
         for (int dy = -1; dy <= 1; dy++)
         {
+#pragma unroll 3
+
             for (int dx = -1; dx <= 1; dx++)
             {
                 /* int manhattanDist = abs(dx) + abs(dy) + abs(dz);
@@ -849,7 +860,15 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
                             float viscosityCoeff = d.viscstrength;
                             visc += viscosityCoeff * m_j * vij / rho_j * lapW;
 
-                        
+                            float v = d.h2 - r2;
+                            float W = d.pollycoef6 * v * v * v;
+
+                            
+
+                            float coeff = (2.0f * d.particlemass / (rho_j * rho_i)) * W;
+                            delta.x += coeff * (vj.x - vi.x);
+                            delta.y += coeff * (vj.y - vi.y);
+                            delta.z += coeff * (vj.z - vi.z);
 
                       
                     }
@@ -865,6 +884,9 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     accl.y = (force.y + visc.y)/rho_i;
     accl.w = 0.0f;
 
+	float eps = d.epsilon;
+    xsph[i] = eps * delta;
+
     
 	
    // int org = particleIndex[i]; // where this particle came from in the original unsorted array
@@ -875,70 +897,6 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
     /*velocity[org].x += accl.x * dt * 0.5;
     velocity[org].y += accl.y * dt * 0.5;
     velocity[org].z += accl.z * dt * 0.5;*/
-}
-__global__ void xsphKernel(
-    float         cellSize,
-    const float4* __restrict__ pos,   
-    const float4* __restrict__ vel,   
-	float3* xsph_delta,
-    int           hs,
-    const int* __restrict__ cellstart,
-    const int* __restrict__ cellend)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= d.count) return;
-
-    float4 pi = __ldg(&pos[i]);
-    float4 vi = __ldg(&vel[i]);
-	float rho_i = fmaxf(pi.w,1e-6f);
-
-    float xi = pi.x, yi = pi.y, zi = pi.z;
-
-    float3 delta = { 0.0f, 0.0f, 0.0f };
-
-    int cx, cy, cz;
-    getCell(xi, yi, zi, cellSize, cx, cy, cz);
-
-    for (int dz = -1; dz <= 1; dz++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-
-                unsigned int hash = spatialHash(cx + dx, cy + dy, cz + dz, hs);
-                int start = cellstart[hash];
-                int end = cellend[hash];
-                if (start == -1) continue;
-
-                for (int k = start; k < end; k++) {
-                    int j = k;
-                    if (j == i) continue;
-
-                    float4 pj = __ldg(&pos[j]);
-                    float dx_val = xi - pj.x;
-                    float dy_val = yi - pj.y;
-                    float dz_val = zi - pj.z;
-                    float r2 = dx_val * dx_val + dy_val * dy_val + dz_val * dz_val;
-
-                    if (r2 < d.h2 && r2 > 1e-9f) {
-                        float v = d.h2 - r2;
-                        float W = d.pollycoef6 * v * v * v;
-
-                        float4 vj = __ldg(&vel[j]);
-                        float rho_j = fmaxf(pj.w, 1e-6f); 
-
-                        float coeff = (2.0f *d.particlemass / (rho_j * rho_i)) * W;
-                        delta.x += coeff * (vj.x - vi.x);
-                        delta.y += coeff * (vj.y - vi.y);
-                        delta.z += coeff * (vj.z - vi.z);
-                    }
-                }
-            }
-        }
-    }
-
-    float eps = d.epsilon;
-    xsph_delta[i].x = eps * delta.x;
-    xsph_delta[i].y = eps * delta.y;
-    xsph_delta[i].z = eps * delta.z;
 }
 
 
@@ -1233,7 +1191,7 @@ __global__ void addparticles(float4 *position, float4 *velocity, float4 *accelra
 
     velocity[k].x = 0.0f;
     velocity[k].z = 0.0f;
-    velocity[k].y = -150.0f;
+    velocity[k].y = -98.0f;
 
     velocity[k].w = 0.0f; // w used for particle neardensity
 
@@ -1321,7 +1279,6 @@ extern "C" void computephysics(float dt)
     //  float subdt = settings.fixedDt / settings.substeps;
     float deltaTime = dt / settings.substeps;
 
-    cudaGraphicsUnmapResources(1, &g_vboResource, 0);
 
     if (settings.nopause)
     {
@@ -1341,17 +1298,9 @@ extern "C" void computephysics(float dt)
                 computeDensity<<<blocks, THREADS>>>( d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex);
 
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
-                computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount);
+                computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount,xsph_delta);
 				
-                if (settings.epsilon > 0.0f) {
                 
-					xsphKernel << <blocks, THREADS >> > (d_cellsize, positions_sorted, velocity_sorted,xsph_delta, HASH_TABLE_SIZE, d_cellStart, d_cellEnd);
-                }
-                else {
-             
-                      cudaMemsetAsync(xsph_delta, 0, totalBodies * sizeof(float3));
-            
-                }
 
                 scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex,xsph_delta);
 
@@ -1426,7 +1375,7 @@ extern "C" void computephysics(float dt)
             static int framecount = 0;
             framecount++;
             frametime += dt;
-            if (frametime >= 0.005f)
+            if (frametime >= settings.flowrate)
             {
                 addparticles<<<blocks, THREADS>>>(
                                                   positions, velocity, accelration);
@@ -1449,16 +1398,24 @@ extern "C" void computephysics(float dt)
         settings.h_cob = (h_result != 0);
     }
 
-    // cudaEventRecord(start);
-    if (g_vboResource)
-    {
-        cudaGraphicsMapResources(1, &g_vboResource, 0);
+    
+}
 
-        GLVertex *d_vbo = nullptr;
+extern "C" void render() {
+   
+    int blocks = (settings.count + THREADS - 1) / THREADS;
+
+    cudaGraphicsMapResources(1, &g_vboResource, 0);
+    
+        GLVertex* d_vbo = nullptr;
         size_t nbytes = 0;
-        cudaGraphicsResourceGetMappedPointer((void **)&d_vbo, &nbytes, g_vboResource);
+        cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
 
-        packToVBOKernel<<<blocks, THREADS>>>(
-            settings.count, positions, velocity, accelration, d_vbo, settings.heateffect, settings.heatMultiplier, deltaTime, settings.cold, settings.size);
-    }
+        packToVBOKernel << <blocks, THREADS >> > (
+            settings.count, positions, velocity, accelration,
+            d_vbo, settings.heateffect, settings.heatMultiplier,
+            settings.fixedDt, settings.cold, settings.size);
+    
+
+        cudaGraphicsUnmapResources(1, &g_vboResource, 0);
 }
