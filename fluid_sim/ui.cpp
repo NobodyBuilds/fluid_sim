@@ -620,6 +620,14 @@ static void DrawWorldContent()
     }
 
     ImGui::Checkbox("Show bounding box##wd", &settings.boundingBox); SYNC;
+	ImGui::Spacing();
+	ImGui::Checkbox("gen waves##wd", &settings.movingbox); SYNC;
+    if(settings.movingbox){
+        ImGui::DragFloat("wave speed##wd", &settings.chnageamount, 0.1f, 0.f, 100.f, "%.1f"); SYNC;
+        ImGui::SetItemTooltip("Speed of bounding box movement that generates waves.");
+
+		ImGui::DragFloat("move threshold##wd", &settings.changelimit, 0.1f, 0.f, 100.f, "%.1f"); SYNC;
+	}
 
     float bx = settings.maxX - settings.minX;
     float by = settings.maxY - settings.minY;
@@ -661,8 +669,7 @@ static void DrawWorldContent()
 
         ImGui::Text("Sun dir: (%.2f, %.2f, %.2f)",
             sky.sunDir.x, sky.sunDir.y, sky.sunDir.z);
-    
-    // ── Time ─────────────────────────────────────────────────────────────────
+        // ── Time ─────────────────────────────────────────────────────────────────
     Sec("Time");
     ImGui::TextDisabled("Speed / Substeps are in the Quick tab.");
     ImGui::Spacing();

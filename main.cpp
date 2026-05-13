@@ -543,6 +543,37 @@ void drawAll()
     
 }
 
+
+float totalchange = 0.0f;
+	bool decreasing = true;
+    void changeboundsdynamic() {
+
+        
+        float value;
+
+        value = settings.chnageamount * settings.fixedDt;
+        if (totalchange >= settings.changelimit) {
+            decreasing = false;
+        }
+        if (totalchange <= -settings.changelimit) {
+            decreasing = true;
+        }
+        if (decreasing) {
+            settings.maxX -= value;
+            totalchange += value;
+
+        }
+        else {
+            settings.maxX += value;
+            totalchange -= value;
+
+
+        }
+		initBoundingBox();
+		syncstruct();
+    }
+
+
 void updateCameraVectors(Camera &cam)
 {
     float yawRad = glm::radians(cam.yaw);
@@ -815,13 +846,15 @@ int main()
         settings.wx = camera.position.x;
         settings.wy = camera.position.y;
         settings.wz = camera.position.z;
-        if (settings.shaderType ==0) {
+
+		if(settings.movingbox)changeboundsdynamic();
+        /*if (settings.shaderType ==0) {
             settings.size = 1.15f;
 
         }
         else {
 			settings.size = 1.0f;
-        }
+        }*/
         if (settings.recordSim)
         {
 

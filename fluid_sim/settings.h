@@ -47,9 +47,9 @@ struct param {
 	float fps = 0.0f;
 	float walldst = 0.25f;
 	float wallrep = 58.0f;
-
-	float epsilon = 0.0002f;
-
+	float changelimit = 10.0f;
+	float epsilon = 0.0004f;
+	float chnageamount = 5.0f;
 	float tilesize = 5.0f;
 	float variationStrength = 0.15f;
 	float color1R = 0.608f, color1G = 0.361f, color1B = 0.851f;
@@ -124,6 +124,7 @@ struct param {
 	bool cf = false;
 	bool h_cob;
 	bool gui = true;
+	bool movingbox = false;
 };
 extern param settings;
 
