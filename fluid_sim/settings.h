@@ -47,9 +47,9 @@ struct param {
 	float fps = 0.0f;
 	float walldst = 0.25f;
 	float wallrep = 58.0f;
-	float changelimit = 10.0f;
-	float epsilon = 0.0004f;
-	float chnageamount = 5.0f;
+	float changelimit = 25.0f;
+	float epsilon = 0.03f;
+	float chnageamount = 15.0f;
 	float tilesize = 5.0f;
 	float variationStrength = 0.15f;
 	float color1R = 0.608f, color1G = 0.361f, color1B = 0.851f;
@@ -71,9 +71,9 @@ struct param {
 
 	float blurSigma = 14.0f;
 
-	
+	float neargrad = 0.0f;
 	float blurDepthFall = 10.75f;
-
+	float particlecolorR=0.0f,particlecolorG =0.1f,particlecolorB=0.9f;
 	float boundsSizeX = 5.0f, boundsSizeY = 5.0f, boundsSizeZ = 5.0f;
 	float skyZenithR = 0.53f, skyZenithG = 0.81f, skyZenithB = 0.98f;
 	float skyHorizonR = 0.85f, skyHorizonG = 0.91f, skyHorizonB = 0.97f;
@@ -114,17 +114,18 @@ struct param {
 
 	// === BOOL VARIABLES (1 byte each) ===
 	bool sph = true;
-	bool nopause = true;
+	bool nopause = false;
 	bool heateffect = true;
 	bool addParticle = false;
 	bool boundingBox = true;
 	bool debug = false;
-	bool recordSim = false;
+	bool recordSim = true;
 	bool spawnstate = true;
 	bool cf = false;
 	bool h_cob;
 	bool gui = true;
 	bool movingbox = false;
+	bool ff = true;
 };
 extern param settings;
 
@@ -153,7 +154,7 @@ struct data {
 	float viscstrength;
 	float surfacetension;
 	float epsilon;
-	
+	float neargrad;
 	
 	int count;
 	int flowcount;

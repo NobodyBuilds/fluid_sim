@@ -1018,7 +1018,6 @@ inline bool FluidRenderer::render(GLuint particleVAO, int particleCount,
     // Legacy particles: return false so drawAll() uses the original program
     if (shaderType == 1)
     {
-        settings.heateffect = true;
         return false;
     }
     if (!ready || particleCount <= 0)

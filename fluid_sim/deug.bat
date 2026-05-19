@@ -1,0 +1,1 @@
+ncu --set full --replay-mode application --kernel-name "updateKernel|computeHashKernel|findCellBoundariesKernel|reorderParticlesKernel|clearActiveCellsKernel|computeDensity|computePressure|scatterarray" --launch-skip 5 --launch-count 30 -o "D:\profiles\sph_targeted" "D:\visual_studio\fluid_sim\x64\Release\fluid_sim.exe"

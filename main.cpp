@@ -327,11 +327,12 @@ float y, p;
 
 void restartSimulation()
 {
-
+    settings.ff = true;
     settings.count = settings.totalBodies;
     freeDynamicGrid();
     settings.samplecount = 0;
     freegpu();
+    syncstruct();
     if (!initgpu(settings.maxparticles))
     {
         printf("Failed to allocate GPU memory for %d particles\n", settings.maxparticles);
@@ -343,7 +344,6 @@ void restartSimulation()
         freegpu();
         return;
     }
-    syncstruct();
     initFloor();
     registerBodies();
     settings.nopause = false;
@@ -431,13 +431,13 @@ void calcKernels()
 
     //  settings.rest_density = 0.1036f * powf(3.5f / settings.h, 3.0f);
     
-    settings.pollycoef6 = 315.0f / (64.0f * settings.pi * h9);
-    // settings.spikycoef2 = 15.0f / (settings.pi * h5);
+    settings.pollycoef6 = 315.0f / (64.0f* settings.pi * h9);
+    // settings.spikycoef2 = 15.0f / (2.0f*settings.pi * h5);  //density
     settings.Sdensity = settings.pollycoef6 * h6; // self density at r=0
     settings.spikycoef = 15.0f / (settings.pi * h6);
     settings.ndensity = settings.spikycoef * h5; // near self density at r=0
-    settings.spikygradv = -45 / (settings.pi * h6);
-    settings.viscosity = 45 / (settings.pi * h6);
+    settings.spikygradv = -45 / (settings.pi * h5);
+    settings.neargrad = 45 / (settings.pi * h6);
     settings.h2 = settings.h * settings.h;
 
    
@@ -548,24 +548,24 @@ float totalchange = 0.0f;
 	bool decreasing = true;
     void changeboundsdynamic() {
 
-        
+        float dt = settings.fixedDt ;
         float value;
 
         value = settings.chnageamount * settings.fixedDt;
-        if (totalchange >= settings.changelimit) {
+        if (totalchange >= settings.changelimit ) {
             decreasing = false;
         }
         if (totalchange <= -settings.changelimit) {
             decreasing = true;
         }
         if (decreasing) {
-            settings.maxX -= value;
-            totalchange += value;
+            settings.maxX -= value *dt;
+            totalchange += value*dt;
 
         }
         else {
-            settings.maxX += value;
-            totalchange -= value;
+            settings.maxX += value*dt;
+            totalchange -= value*dt;
 
 
         }
@@ -782,6 +782,7 @@ int main()
     bloc_uView = glGetUniformLocation(bboxProgram, "uView");
     bloc_uColor = glGetUniformLocation(bboxProgram, "uColor");
 
+	syncstruct();
     calcKernels();
     initBoundingBox();
     sky.init();
@@ -798,7 +799,6 @@ int main()
         freegpu();
         return -1;
     }
-	syncstruct();
     ensureVBOCapacity((size_t)settings.maxparticles * 3);
     registerGLBuffer(vbo);
 
@@ -819,9 +819,11 @@ int main()
     view.height = (float)screenHeight;
     view.aspect = (float)screenWidth / (float)screenHeight;
     view.zoom = 1.0f;
+
+
     while (!glfwWindowShouldClose(window))
     {
-
+        
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -847,7 +849,7 @@ int main()
         settings.wy = camera.position.y;
         settings.wz = camera.position.z;
 
-		if(settings.movingbox)changeboundsdynamic();
+		
         /*if (settings.shaderType ==0) {
             settings.size = 1.15f;
 
@@ -857,7 +859,7 @@ int main()
         }*/
         if (settings.recordSim)
         {
-
+            if (settings.movingbox)changeboundsdynamic();
             updatePhysics(settings.fixedDt);
             settings.accumulator = 0.0f;
         }
@@ -867,7 +869,7 @@ int main()
             float effectiveDt = fminf(settings.accumulator, settings.fixedDt * 4.0f);
             while (settings.accumulator >= settings.fixedDt)
             {
-
+                if (settings.movingbox)changeboundsdynamic();
                 updatePhysics(settings.fixedDt);
 
                 settings.accumulator -= settings.fixedDt;

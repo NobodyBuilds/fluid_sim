@@ -373,7 +373,7 @@ static void DrawFluidContent()
     
     // ── Viscosity ─────────────────────────────────────────────────────────────
     Sec("Viscosity");
-	ImGui::DragFloat("XSPH##fl", &settings.epsilon, 0.000001f, 0.f, 1.f, "%.9f"); SYNC;
+	ImGui::DragFloat("XSPH##fl", &settings.epsilon, 0.001f, 0.f, 1.f, "%.9f"); SYNC;
     ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.001f, 0.f, 10.0f, "%.4f"); SYNC;
     ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey / thick fluid.");
   
@@ -395,6 +395,8 @@ static void DrawFluidContent()
     Sec("Pipeline");
     ImGui::Checkbox("SPH forces##fl", &settings.sph); SYNC;
     ImGui::SetItemTooltip("Master toggle for density + pressure force kernels.\nDisable to watch purely gravity-driven motion.");
+
+     
 }
 
 // ─── PARTICLES ───────────────────────────────────────────────────────────────
@@ -435,6 +437,9 @@ static void DrawParticlesContent()
         ImGui::SetItemTooltip("How quickly movement raises the heat colour.");
         ImGui::SliderFloat("Fade##pth", &settings.cold, 0.1f, 20.f, "%.1f"); SYNC;
         ImGui::SetItemTooltip("Decay rate — how fast colour cools when idle.");
+    }
+    else {
+        ImGui::ColorEdit3("particle color", &settings.particlecolorR);
     }
 
     // ── Emitter ───────────────────────────────────────────────────────────────

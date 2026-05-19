@@ -12,13 +12,18 @@ static bool f11down = false;
 static bool xdown = false;
 static bool runstatedown = false;
 static bool hdown = false;
-
+static bool reset = false;
 
 extern "C" void buttons(GLFWwindow* window){
-	//sim pause logic
-    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
-        restartSimulation();
+	
+    bool restart = (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS);
    
+    if (restart && !reset) {
+        restartSimulation();
+    }
+    reset = restart;
+
+
     bool down = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
 
     if (down && !predown && !settings.h_cob)

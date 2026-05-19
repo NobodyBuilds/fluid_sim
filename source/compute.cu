@@ -127,6 +127,9 @@ float4 *positions_sorted = nullptr;
 float4 *velocity_sorted = nullptr;
 float4* accelration_sorted = nullptr;
 float3* xsph_delta = nullptr;
+
+
+
 // constant struct for kernels to reduce memory occupancy and register load, also to avoid passing too many parameters to kernels which can cause register spilling and performance 
 
 __constant__ data d;
@@ -173,14 +176,14 @@ extern "C" void syncstruct() {
 	h.flowcount = settings.flowcount;
 	h.epsilon = settings.epsilon;
 	
-
+    h.neargrad = settings.neargrad;
 	cudaMemcpyToSymbol(d, &h, sizeof(data));
 
 }
 
 extern "C" bool initgpu(int count)
 {
-
+   
     cudaMalloc(&positions, count * sizeof(float4));
     cudaMalloc(&velocity, count * sizeof(float4));
     cudaMalloc(&accelration, count * sizeof(float4));
@@ -192,7 +195,7 @@ extern "C" bool initgpu(int count)
 	cudaMalloc(&d_cob, count * sizeof(int));
 	cudaMalloc(&xsph_delta, count * sizeof(float3));
 
-    
+	cudaMemset(velocity_sorted, 0, count * sizeof(float4));
 
     printf("Total particle mem allocated: %.2f MB\n", (count * (6 * sizeof(float4) +  sizeof(float3) + ( 2* sizeof(int)))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
 
@@ -214,7 +217,7 @@ extern "C" void freegpu()
     cudaFree(accelration_sorted);
 
 	cudaFree(ncount);
-
+	cudaFree(xsph_delta);
     cudaFree(d_cob);
 	d_cob = nullptr;
     positions = nullptr;
@@ -256,11 +259,13 @@ extern "C" void unregisterGLBuffer()
 
 __global__ void packToVBOKernel(
     int n,
-    const float4 *__restrict__ pos,
-    const float4 *__restrict__ vel,
-    float4 *acl,
+    const float4* __restrict__ pos,
+    const float4* __restrict__ vel,
+    float4* acl,
 
-    GLVertex *vbo, bool heat, float heatMultipler, float dt, float heatDecay, float size)
+    GLVertex* vbo, bool heat, float heatMultipler, float dt, float heatDecay, float size,
+    float R, float G, float B
+)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
@@ -316,6 +321,11 @@ __global__ void packToVBOKernel(
             c.z = 0.0f;
         }
     }
+    else {
+        c.x = R*255.0f;
+        c.y = G*255.0f;
+        c.z = B*255.0f;
+    }
 
     float fpx = p.x,
           fpy = p.y,
@@ -325,7 +335,7 @@ __global__ void packToVBOKernel(
     float fcg = c.y * (1.0f / 255.0f);
     float fcb = c.z * (1.0f / 255.0f);
 
-    // Matches the offsets used in the old CPU drawAll() loop
+    
     const float ox[3] = {-1.0f, 3.0f, -1.0f};
     const float oy[3] = {-1.0f, -1.0f, 3.0f};
 
@@ -585,12 +595,11 @@ void buildDynamicGrid(
         return;
     }
 
-    static bool firstFrame = true;
-    if (firstFrame)
+    if (settings.ff)
     {
         cudaMemset(d_cellStart, -1, HASH_TABLE_SIZE * sizeof(int));
         cudaMemset(d_cellEnd, -1, HASH_TABLE_SIZE * sizeof(int));
-        firstFrame = false;
+        settings.ff = false;
     }
     else
     {
@@ -725,8 +734,8 @@ __global__ void computeDensity(float cellSize,float4 *pos,float4 *vel,int hs,con
               rho);
      }*/
 
-    pos[i].w = fmaxf(rho, mindensity);
-    vel[i].w = fmaxf(rhon, mindensity );
+    pos[i].w = fmaxf(rho, 0.0001f);   // just prevent div by zero
+    vel[i].w = fmaxf(rhon, 0.0001f);
     //pos[i].w = rho;
     //vel[i].w = rhon;
 }
@@ -762,7 +771,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
         force.z -= wallForce * (1.0f - (d.maxZ - zi) / wallDst);
 
     float p_i = d.pressure * (p.w - d.restDensity);
-    float pn_i = d.nearpressure * v.w ;
+    float pn_i = d.nearpressure *( v.w -d.restDensity) ;
    
     float3 visc = {0.0f, 0.0f, 0.0f};
     float3 delta = {0.0f, 0.0f, 0.0f};
@@ -779,7 +788,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
 
 
     float pressuretermRho_i = p_i / (rho_i * rho_i);
-    float NpressuretermRho_i = pn_i / (nrho_i * nrho_i);
+    float NpressuretermRho_i = (pn_i * p_i)*0.5f;
 #pragma unroll 3
     for (int dz = -1; dz <= 1; dz++)
     {
@@ -841,16 +850,17 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
                         float nrho_j = vj.w;
                         float x = d.h - r;
                         float gradW = d.spikyGradv * x * x; // precomputed gradw in negative value
-
+                        float ngrad = d.neargrad * x * x * x;
                         float pressureterm = pressuretermRho_i + p_j / (rho_j * rho_j);
                         float npressureterm = NpressuretermRho_i + np_j / (nrho_j * nrho_j);
-                        // float pressureterm = (p_i + p_j)/2;
+                        // float pressureterm = (p_i + p_j)/2.0f;
+                        // float npressureterm = (pn_i + np_j)/2.0f;
 
                         float m_j = d.particlemass; // particle mass
 
-                        force += -m_j * pressureterm * gradW * dir;
+                        force += -m_j*pressureterm * gradW * dir;
 
-                        force += -m_j * npressureterm * gradW * dir;
+                        force += m_j*npressureterm * ngrad * dir;
                         
                         
                             float3 vxj = make_float3(vj.x, vj.y, vj.z);
@@ -865,7 +875,7 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
 
                             
 
-                            float coeff = (2.0f * d.particlemass / (rho_j * rho_i)) * W;
+                            float coeff = ( d.particlemass / rho_j) * W;
                             delta.x += coeff * (vj.x - vi.x);
                             delta.y += coeff * (vj.y - vi.y);
                             delta.z += coeff * (vj.z - vi.z);
@@ -900,13 +910,13 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
 }
 
 
-__global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex,float3* vs) {
+__global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex,float3* xsph) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numParticles)
         return;
     int org = particleindex[i]; // where this particle came from in the original unsorted array
   float4 accl=__ldg(&aclin[i]);
-  float3 vx = vs[i];
+  float3 vx = xsph[i];
   aclout[org] = accl;
   float4 v;
   v.x =  accl.x * dt * 0.5;
@@ -918,8 +928,8 @@ __global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* acl
   v.z += vx.z;
 
   vel[org] += v;
-
   
+
 }
 
 __device__ void atomicMinFloat(float *addr, float val)
@@ -1012,11 +1022,9 @@ __global__ void updateKernel( float dt,float4 *pos, float4 *vel, float4 *acl
         vl.z *= drag;
     }*/
 
-
-    p.x += vl.x* dt;
-    p.y += vl.y* dt;
-    p.z += vl.z* dt;
-
+    p.x +=   vl.x* dt;
+    p.y +=   vl.y* dt;
+    p.z +=   vl.z* dt;
     a.x = 0;
     a.y = 0;
     a.z = 0;
@@ -1299,8 +1307,6 @@ extern "C" void computephysics(float dt)
 
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
                 computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount,xsph_delta);
-				
-                
 
                 scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex,xsph_delta);
 
@@ -1414,7 +1420,7 @@ extern "C" void render() {
         packToVBOKernel << <blocks, THREADS >> > (
             settings.count, positions, velocity, accelration,
             d_vbo, settings.heateffect, settings.heatMultiplier,
-            settings.fixedDt, settings.cold, settings.size);
+            settings.fixedDt, settings.cold, settings.size,settings.particlecolorR,settings.particlecolorG,settings.particlecolorB);
     
 
         cudaGraphicsUnmapResources(1, &g_vboResource, 0);
