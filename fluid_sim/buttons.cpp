@@ -20,6 +20,7 @@ extern "C" void buttons(GLFWwindow* window){
    
     if (restart && !reset) {
         restartSimulation();
+        reset=false;
     }
     reset = restart;
 

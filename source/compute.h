@@ -16,6 +16,9 @@ extern "C" {
 	void registerGLBuffer(unsigned int vboId);
 	void unregisterGLBuffer();
 	void render();
+	void initraymarch(unsigned int rayPBO, unsigned int rayTex);
+	void unregisterraymarch();
+	void reallocgrid();
 	
 #ifdef __cplusplus
 }

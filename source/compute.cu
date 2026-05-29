@@ -15,6 +15,7 @@
 
 #include <math_constants.h>
 #include <math_functions.h>
+#include <vector>
 #include "\visual_studio\fluid_sim\fluid_sim\settings.h"
 
 #include <cub/cub.cuh>
@@ -138,6 +139,9 @@ __constant__ data d;
     //helpers
 	int* d_cob = nullptr;
 
+    //vs
+    float* voxelgrid = nullptr;
+    
 extern "C" void syncstruct() {
     h.dt = settings.fixedDt;
     h.downf = settings.gravityforce;
@@ -175,8 +179,14 @@ extern "C" void syncstruct() {
     h.count = settings.count;
 	h.flowcount = settings.flowcount;
 	h.epsilon = settings.epsilon;
-	
+    h.scale = settings.scale;
     h.neargrad = settings.neargrad;
+    h.vr = settings.vr;
+    h.vg = settings.vg;
+    h.vb = settings.vb;
+	h.densityoffset = settings.densityoffset;
+    h.stepsize = settings.stepsize;
+	h.depth = settings.depth;
 	cudaMemcpyToSymbol(d, &h, sizeof(data));
 
 }
@@ -196,6 +206,14 @@ extern "C" bool initgpu(int count)
 	cudaMalloc(&xsph_delta, count * sizeof(float3));
 
 	cudaMemset(velocity_sorted, 0, count * sizeof(float4));
+
+   // if (settings.shaderType == 2) {
+      
+
+        size_t voxelBytes = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
+        cudaMalloc(&voxelgrid, voxelBytes);
+        cudaMemset(voxelgrid, 0, voxelBytes);
+    
 
     printf("Total particle mem allocated: %.2f MB\n", (count * (6 * sizeof(float4) +  sizeof(float3) + ( 2* sizeof(int)))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
 
@@ -219,6 +237,8 @@ extern "C" void freegpu()
 	cudaFree(ncount);
 	cudaFree(xsph_delta);
     cudaFree(d_cob);
+	cudaFree(voxelgrid);
+	voxelgrid = nullptr;
 	d_cob = nullptr;
     positions = nullptr;
     velocity = nullptr;
@@ -632,6 +652,8 @@ void buildDynamicGrid(
         d_particleIndex,     // tells us: sorted slot i came from original slot src
         positions, velocity,accelration, // source
         positions_sorted, velocity_sorted, accelration_sorted);
+
+
 }
 
 // sph-functions
@@ -1277,6 +1299,75 @@ extern "C" void registerBodies()
                                        positions, velocity, accelration);
 }
 
+
+
+__global__ void splatVoxelsTrilinear(const float4* __restrict__ pos, float* grid, float size, int x, int y, int z) {
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= d.count)return;
+
+    float4 p = __ldg(&pos[i]);
+
+    float gx = (p.x - d.minX) / size - 0.5f;
+    float gy = (p.y - d.minY) / size - 0.5f;
+    float gz = (p.z - d.minZ) / size - 0.5f;
+
+    int x0 = (int)floorf(gx);
+    int y0 = (int)floorf(gy);
+    int z0 = (int)floorf(gz);
+
+    float fx = gx - x0;
+    float fy = gy - y0;
+    float fz = gz - z0;
+    float density = (p.w > 0.0001f) ? p.w : d.particlemass;
+
+    float validWeight = 0.0f;
+    for (int dz = 0; dz <= 1; ++dz) {
+        int zz = z0 + dz;
+        if (zz < 0 || zz >= z) continue;
+        float wz = dz ? fz : 1.0f - fz;
+
+        for (int dy = 0; dy <= 1; ++dy) {
+            int yy = y0 + dy;
+            if (yy < 0 || yy >= y) continue;
+            float wy = dy ? fy : 1.0f - fy;
+
+            for (int dx = 0; dx <= 1; ++dx) {
+                int xx = x0 + dx;
+                if (xx < 0 || xx >= x) continue;
+                float wx = dx ? fx : 1.0f - fx;
+                validWeight += wx * wy * wz;
+            }
+        }
+    }
+
+    if (validWeight <= 0.0f)
+        return;
+
+    float normDensity = density / validWeight;
+    for (int dz = 0; dz <= 1; ++dz) {
+        int zz = z0 + dz;
+        if (zz < 0 || zz >= z) continue;
+        float wz = dz ? fz : 1.0f - fz;
+
+        for (int dy = 0; dy <= 1; ++dy) {
+            int yy = y0 + dy;
+            if (yy < 0 || yy >= y) continue;
+            float wy = dy ? fy : 1.0f - fy;
+
+            for (int dx = 0; dx <= 1; ++dx) {
+                int xx = x0 + dx;
+                if (xx < 0 || xx >= x) continue;
+                float wx = dx ? fx : 1.0f - fx;
+                int idx = zz * y * x + yy * x + xx;
+                atomicAdd(&grid[idx], normDensity * wx * wy * wz);
+            }
+        }
+    }
+}
+
+
+
 extern "C" void computephysics(float dt)
 {
     int blocks = (settings.count + THREADS - 1) / THREADS;
@@ -1305,8 +1396,35 @@ extern "C" void computephysics(float dt)
                 // uses p pos for stability
                 computeDensity<<<blocks, THREADS>>>( d_cellsize, positions_sorted, velocity_sorted, HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex);
 
+
+
+                if (settings.shaderType == 2) {
+
+                    cudaMemset(voxelgrid, 0, settings.x * settings.y * settings.z * sizeof(float));
+
+
+                    splatVoxelsTrilinear << <blocks, THREADS >> > (positions_sorted, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
+                }
+
+
+
+
+
+
+
                 // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
                 computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount,xsph_delta);
+
+
+               
+
+
+
+
+
+
+                
+
 
                 scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex,xsph_delta);
 
@@ -1407,21 +1525,275 @@ extern "C" void computephysics(float dt)
     
 }
 
-extern "C" void render() {
-   
-    int blocks = (settings.count + THREADS - 1) / THREADS;
+extern "C" void reallocgrid() {
+    settings.x = (int)ceilf((settings.maxX - settings.minX) / settings.voxelSize);
+    settings.y = (int)ceilf((settings.maxY - settings.minY) / settings.voxelSize);
+    settings.z = (int)ceilf((settings.maxz - settings.minZ) / settings.voxelSize);
+    if (settings.x < 1) settings.x = 1;
+    if (settings.y < 1) settings.y = 1;
+    if (settings.z < 1) settings.z = 1;
 
-    cudaGraphicsMapResources(1, &g_vboResource, 0);
+    if (voxelgrid) {
+        cudaFree(voxelgrid);
+        voxelgrid = nullptr;
+    }
+    size_t gridSize = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
+    cudaMalloc(&voxelgrid, gridSize);
+    cudaMemset(voxelgrid, 0, gridSize);
+}
+
+size_t free_mem, total_mem;
+float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
+
+__device__ __forceinline__ float voxelValue(const float* __restrict__ grid, int x, int y, int z, int ix, int iy, int iz)
+{
+    if (ix < 0 || ix >= x || iy < 0 || iy >= y || iz < 0 || iz >= z)
+        return 0.0f;
+    return __ldg(&grid[iz * y * x + iy * x + ix]);
+}
+
+__device__ __forceinline__ float sampleVoxelsTrilinear(const float* __restrict__ grid, float3 pos, float size, int x, int y, int z)
+{
+    float gx = (pos.x - d.minX) / size - 0.5f;
+    float gy = (pos.y - d.minY) / size - 0.5f;
+    float gz = (pos.z - d.minZ) / size - 0.5f;
+
+    int x0 = (int)floorf(gx);
+    int y0 = (int)floorf(gy);
+    int z0 = (int)floorf(gz);
+
+    float fx = gx - x0;
+    float fy = gy - y0;
+    float fz = gz - z0;
+
+    float c000 = voxelValue(grid, x, y, z, x0,     y0,     z0);
+    float c100 = voxelValue(grid, x, y, z, x0 + 1, y0,     z0);
+    float c010 = voxelValue(grid, x, y, z, x0,     y0 + 1, z0);
+    float c110 = voxelValue(grid, x, y, z, x0 + 1, y0 + 1, z0);
+    float c001 = voxelValue(grid, x, y, z, x0,     y0,     z0 + 1);
+    float c101 = voxelValue(grid, x, y, z, x0 + 1, y0,     z0 + 1);
+    float c011 = voxelValue(grid, x, y, z, x0,     y0 + 1, z0 + 1);
+    float c111 = voxelValue(grid, x, y, z, x0 + 1, y0 + 1, z0 + 1);
+
+    float c00 = lerp(c000, c100, fx);
+    float c10 = lerp(c010, c110, fx);
+    float c01 = lerp(c001, c101, fx);
+    float c11 = lerp(c011, c111, fx);
+    float c0 = lerp(c00, c10, fy);
+    float c1 = lerp(c01, c11, fy);
+    return lerp(c0, c1, fz);
+}
+
+
+__device__ __forceinline__ float3 calcNormal(
+    const float* __restrict__ grid, float3 pos, float size, int x, int y, int z)
+{
+    float eps = size;  // one voxel width
+    float dx = sampleVoxelsTrilinear(grid, { pos.x + eps, pos.y, pos.z }, size, x, y, z)
+        - sampleVoxelsTrilinear(grid, { pos.x - eps, pos.y, pos.z }, size, x, y, z);
+    float dy = sampleVoxelsTrilinear(grid, { pos.x, pos.y + eps, pos.z }, size, x, y, z)
+        - sampleVoxelsTrilinear(grid, { pos.x, pos.y - eps, pos.z }, size, x, y, z);
+    float dz = sampleVoxelsTrilinear(grid, { pos.x, pos.y, pos.z + eps }, size, x, y, z)
+        - sampleVoxelsTrilinear(grid, { pos.x, pos.y, pos.z - eps }, size, x, y, z);
+    return normalize({ -dx, -dy, -dz });  // negative = points outward
+}
+
+
+__global__ void reymarch(uchar4* output,float* grid,int sw,int sh,
+	float3 campos, float3 forward, float3 right, float3 up, float aspect, int x, int y, int z, float size, float halftanfov,float3 sundir
+    ){
+	int px = blockIdx.x * blockDim.x + threadIdx.x;
+	int py = blockIdx.y * blockDim.y + threadIdx.y;
+    if (px >= sw || py >= sh) return;
+
+    float u = (2 * (px + 0.5f) / sw - 1);
+	float v = (1 - 2 * (py + 0.5f) / sh);
+
+	u *= halftanfov* aspect;
+    v *= halftanfov;
+	float3 dir = forward + u * right + v * up;
+	dir = normalize(dir);
+    float density = 0.0f;
+	uchar4 color = { 0, 0, 0, 255 };
+    float scale = d.scale; // tune 
+    float3 invDir = { 1.f / dir.x, 1.f / dir.y, 1.f / dir.z };
+
+    float t0x = (d.minX - campos.x) * invDir.x;
+    float t1x = (d.maxX - campos.x) * invDir.x;
+    float tMinX = fminf(t0x, t1x);
+    float tMaxX = fmaxf(t0x, t1x);
+
+    float t0y = (d.minY - campos.y) * invDir.y;
+    float t1y = (d.maxY - campos.y) * invDir.y;
+    float tMinY = fminf(t0y, t1y);
+    float tMaxY = fmaxf(t0y, t1y);
+
+    float t0z = (d.minZ - campos.z) * invDir.z;
+    float t1z = (d.maxZ - campos.z) * invDir.z;
+    float tMinZ = fminf(t0z, t1z);
+    float tMaxZ = fmaxf(t0z, t1z);
+
+    float t_enter = fmaxf(fmaxf(tMinX, tMinY), tMinZ);
+    float t_exit = fminf(fminf(tMaxX, tMaxY), tMaxZ);
+
+    if (t_exit < t_enter || t_exit < 0.f) {
+        output[py * sw + px] = { 0, 0, 0, 0}; 
+        return;
+    }
+
+    float stepsize = d.stepsize;
+    float t_start = fmaxf(t_enter, 0.0f);
+    float t = t_start + fminf(stepsize * 0.5f, fmaxf((t_exit - t_start) * 0.5f, 0.0001f));
+    int steps = (int)((t_exit - t) / stepsize) + 1;
+    for (int i = 0; i < steps; i++) {
+		if (t > t_exit) break;
+        float3 pos = campos+ dir*t;
+        t += stepsize;
+		 density = sampleVoxelsTrilinear(grid, pos, size, x, y, z);
+         if (density > d.densityoffset) {
+             float depth = t_exit - t;
+             float3 n = calcNormal(grid, pos, size, x, y, z);//normals
+             float3 viewDir = normalize(-dir);  
+             float diffuse = fmaxf(dot(n, sundir), 0.0f);
+
+             float ambient = 0.15f;
+
+             float3 halfVec = normalize(sundir + viewDir);
+             float spec = powf(fmaxf(dot(n, halfVec), 0.0f), 64.0f); // shiny water
+
+             float cosTheta = fmaxf(dot(n, viewDir), 0.0f);
+             float fresnel = 0.04f + 0.3f * powf(1.0f - cosTheta, 5.0f);
+
+             
+             float light = ambient + diffuse;
+
+             float wcr = d.vr ;
+			 float wcg = d.vg ;
+			 float wcb = d.vb ;
+
+             float r = wcr * light*(1.0f- fresnel) + spec;
+             float g = wcg * light*(1.0f- fresnel) + spec;
+             float b = wcb * light*(1.0f- fresnel) + spec;
+
+             output[py * sw + px] = {
+                 (unsigned char)(fminf(r, 1.f) * 255.f),
+                 (unsigned char)(fminf(g, 1.f) * 255.f),
+                 (unsigned char)(fminf(b, 1.f) * 255.f),
+                 255
+             };
+             return;
+    }
     
-        GLVertex* d_vbo = nullptr;
-        size_t nbytes = 0;
-        cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
+    }
+        output[py * sw + px] = { 255, 255, 255, 0 };
+}
 
+
+
+cudaGraphicsResource* rayPBOResource = nullptr;
+
+static unsigned int s_rayPBO = 0;
+static unsigned int s_rayTex = 0;
+
+extern "C" void unregisterraymarch() {
+    if (rayPBOResource) {
+        cudaGraphicsUnregisterResource(rayPBOResource);
+        rayPBOResource = nullptr;
+    }
+    s_rayPBO = 0;
+    s_rayTex = 0;
+}
+
+extern "C" void initraymarch(unsigned int rayPBO, unsigned int rayTex) {
+    unregisterraymarch();
+    cudaMemGetInfo(&free_mem, &total_mem);
+    printf("VRAM free: %.2f MB / %.2f MB\n", free_mem / 1024.0 / 1024.0, total_mem / 1024.0 / 1024.0);
+
+    s_rayPBO = rayPBO;
+    s_rayTex = rayTex;
+    cudaError_t err = cudaGraphicsGLRegisterBuffer(&rayPBOResource, rayPBO, cudaGraphicsRegisterFlagsWriteDiscard);
+    if (err != cudaSuccess) {
+        printf("ERROR: cudaGraphicsGLRegisterBuffer(rayPBO): %s\n", cudaGetErrorString(err));
+        rayPBOResource = nullptr;
+    }
+}
+
+extern "C" void render() {
+    int blocks = (settings.count + THREADS - 1) / THREADS;
+    if (blocks <= 0)
+        return;
+
+    if (settings.shaderType == 2) {
+        if (!voxelgrid || !rayPBOResource)
+            return;
+
+        size_t voxelBytes = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
+        cudaMemset(voxelgrid, 0, voxelBytes);
+        splatVoxelsTrilinear<<<blocks, THREADS>>>(positions, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
+
+        cudaError_t err = cudaGraphicsMapResources(1, &rayPBOResource, 0);
+        if (err != cudaSuccess) {
+            printf("ERROR: cudaGraphicsMapResources(rayPBO): %s\n", cudaGetErrorString(err));
+            return;
+        }
+
+        uchar4* d_pixels = nullptr;
+        size_t numBytes = 0;
+        err = cudaGraphicsResourceGetMappedPointer((void**)&d_pixels, &numBytes, rayPBOResource);
+        if (err != cudaSuccess) {
+            printf("ERROR: cudaGraphicsResourceGetMappedPointer(rayPBO): %s\n", cudaGetErrorString(err));
+            cudaGraphicsUnmapResources(1, &rayPBOResource, 0);
+            return;
+        }
+
+        float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
+        int sw = (int)settings.sw;
+        int sh = (int)settings.sh;
+        dim3 block(16, 16);
+        dim3 grid((sw + block.x - 1) / block.x, (sh + block.y - 1) / block.y);
+        reymarch<<<grid, block>>>(
+            d_pixels, voxelgrid,
+            sw, sh,
+            settings.campos, settings.Forward, settings.Right, settings.Up,
+            settings.Aspect,
+            settings.x, settings.y, settings.z,
+            settings.voxelSize,
+            tamfov,settings.sundir);
+
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            printf("ERROR: reymarch launch: %s\n", cudaGetErrorString(err));
+        }
+
+        cudaGraphicsUnmapResources(1, &rayPBOResource, 0);
+
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_rayPBO);
+        glBindTexture(GL_TEXTURE_2D, s_rayTex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        return;
+    }
+
+    cudaError_t err = cudaGraphicsMapResources(1, &g_vboResource, 0);
+    if (err != cudaSuccess) {
+        printf("ERROR: cudaGraphicsMapResources(VBO): %s\n", cudaGetErrorString(err));
+        return;
+    }
+
+    if (settings.shaderType != 2) {
+    GLVertex* d_vbo = nullptr;
+    size_t nbytes = 0;
+    err = cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
+    if (err != cudaSuccess) {
+        printf("ERROR: cudaGraphicsResourceGetMappedPointer(VBO): %s\n", cudaGetErrorString(err));
+        cudaGraphicsUnmapResources(1, &g_vboResource, 0);
+        return;
+    }
         packToVBOKernel << <blocks, THREADS >> > (
             settings.count, positions, velocity, accelration,
             d_vbo, settings.heateffect, settings.heatMultiplier,
-            settings.fixedDt, settings.cold, settings.size,settings.particlecolorR,settings.particlecolorG,settings.particlecolorB);
-    
-
-        cudaGraphicsUnmapResources(1, &g_vboResource, 0);
+            settings.fixedDt, settings.cold, settings.size, settings.particlecolorR, settings.particlecolorG, settings.particlecolorB);
+    cudaGraphicsUnmapResources(1, &g_vboResource, 0);
+    }
 }

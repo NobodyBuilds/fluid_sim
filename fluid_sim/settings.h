@@ -1,9 +1,21 @@
 ﻿#pragma once
+#include<iostream>
+
+#include <vector_types.h>
 struct param {
 	// === FLOAT VARIABLES (4 bytes each) ===
 	// Grouped for cache locality and alignment
+	float3 campos = {0.0f,0.0f,0.0f};
+	float3 Forward = {0.0f, 0.0f, 1.0f};
+	float3 Up = {0.0f, 1.0f, 0.0f};
+	float3 Right = {1.0f, 0.0f, 0.0f};
+	float3 sundir = { 0.4f, 0.6f, 0.3f };
+
+	float sw = 0.0f;
+	float sh = 0.0f;
 	float fixedDt = 1 / 60.0f;
-	
+	float Fov = 0.0f;
+	float Aspect = 0.0f;
 	float size = 1.0f;
 	float particleMass = 0.20f;
 	float cold = 4.500f;
@@ -12,8 +24,8 @@ struct param {
 	float h = 4.0f;
 	float h2 = h * h;
 	float rest_density = 0.01800f;
-	float pressure = 500.0f;
-	float nearpressure = 1000.0f;
+	float pressure = 140.0f;
+	float nearpressure = 40.0f;
 	float visc = 0.0f;
 	float gravityforce = 98.0f;
 	float pi = 3.14159265358979323846f;
@@ -47,9 +59,9 @@ struct param {
 	float fps = 0.0f;
 	float walldst = 0.25f;
 	float wallrep = 58.0f;
-	float changelimit = 25.0f;
-	float epsilon = 0.03f;
-	float chnageamount = 15.0f;
+	float changelimit = 50.0f;
+	float epsilon = 0.018f;
+	float chnageamount = 2000.0f;
 	float tilesize = 5.0f;
 	float variationStrength = 0.15f;
 	float color1R = 0.608f, color1G = 0.361f, color1B = 0.851f;
@@ -88,16 +100,26 @@ struct param {
 
 	float sunIntensity = 1.5f;
 	float refrStrength = 0.008f;
-
+	float vr = 0.2f, vg = 0.1f, vb = 0.9f;
 	//float shadowStrength = 1.5f;
 
 	float blurWorldRadius = 1.3870f;    // world-space kernel radius
 	float blurStrength = 0.250f;    // sigma scale factor
 	float blurDiffStrength = 0.1f;     // depth-similarity falloff
 	float refrMult = 1.8f;     // refraction ray march scale
-
+	float scale = 0.01f;
+	float densityoffset = 0.09f;
+	float voxelSize = 2.0f;
+	int dy = 25;
 	double fuc_ms = 0.0;
+	float stepsize = 1.0f;
+	float depth = 2.0f;
 	// === INT VARIABLES (4 bytes each) ===
+    int x = (int)ceil((maxX - minX) / voxelSize);
+	int y = (int)ceil((maxY - minY) / voxelSize);
+	int z = (int)ceil((maxz - minZ) / voxelSize);
+	
+	
 	int totalBodies = 60000;
 	int maxparticles = totalBodies * 5;
 	int count = totalBodies;
@@ -155,7 +177,12 @@ struct data {
 	float surfacetension;
 	float epsilon;
 	float neargrad;
-	
+	float scale;
+	float vr, vg, vb;
+	float densityoffset;
+	float tilesize;
+	float depth;
+	float stepsize;
 	int count;
 	int flowcount;
 };

@@ -25,9 +25,11 @@
 #include "fluid_sim/settings.h"
 #include "source/compute.h"
 #include "fluid_sim/main.h"
+#include <vector_types.h>
 
 #include "fluid_sim/buttons.h"
-
+#include<stdint.h>
+#include <uchar.h>
 #include "fluid_sim/floor.h"
 #include"fluid_sim/sky.h"
 #define _USE_MATH_DEFINES
@@ -68,6 +70,7 @@ struct Camera
     float pitch = -15.0f; // looking down
     float fov = 70.0f;
 };
+
 
 Camera camera;
 bool firstMouse = true;
@@ -201,6 +204,84 @@ FragColor = vec4(baseColor  ,1.0f);
 
 
 )glsl";
+
+GLuint quadShader = 0;
+
+void initQuadShader() {
+    if (quadShader)
+        return;
+
+    const char* vsrc = R"(
+        #version 330 core
+        out vec2 uv;
+        void main() {
+            vec2 pos = vec2((gl_VertexID & 1) * 2, (gl_VertexID >> 1) * 2);
+            uv = pos;
+            gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+        }
+    )";
+
+    const char* fsrc = R"(
+        #version 330 core
+        in vec2 uv;
+        out vec4 fragColor;
+        uniform sampler2D rayTexture;
+        void main() {
+            fragColor = texture(rayTexture, vec2(uv.x, 1.0 - uv.y));
+        }
+    )";
+
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &vsrc, nullptr);
+    glCompileShader(vs);
+
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &fsrc, nullptr);
+    glCompileShader(fs);
+
+    quadShader = glCreateProgram();
+    glAttachShader(quadShader, vs);
+    glAttachShader(quadShader, fs);
+    glLinkProgram(quadShader);
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+}
+GLuint rayTex = 0, rayPBO = 0;
+
+
+void rayinit(int width, int height) {
+    unregisterraymarch();
+    if (rayPBO)
+    {
+        glDeleteBuffers(1, &rayPBO);
+        rayPBO = 0;
+    }
+    if (rayTex)
+    {
+        glDeleteTextures(1, &rayTex);
+        rayTex = 0;
+    }
+
+    settings.sw = (float)width;
+    settings.sh = (float)height;
+
+    glGenTextures(1, &rayTex);
+    glBindTexture(GL_TEXTURE_2D, rayTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenBuffers(1, &rayPBO);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, rayPBO);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, (size_t)width * (size_t)height * sizeof(uchar4), nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+    initraymarch(rayPBO, rayTex);
+}
 
 // CHANGE: Shader compilation helper
 static GLuint compileShader(GLenum type, const char *src)
@@ -406,6 +487,8 @@ void initBoundingBox()
         settings.mx, settings.my, settings.nz, settings.mx, settings.my, settings.mz,
         settings.nx, settings.my, settings.nz, settings.nx, settings.my, settings.mz
 
+
+
     };
 
     glGenVertexArrays(1, &bboxVAO);
@@ -419,6 +502,13 @@ void initBoundingBox()
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
 
     glBindVertexArray(0);
+
+
+    settings.x = (int)ceil((settings.maxX - settings.minX) / settings.voxelSize);
+    settings.y = (int)ceil((settings.maxY - settings.minY) / settings.voxelSize);
+    settings.z = (int)ceil((settings.maxz - settings.minZ) / settings.voxelSize);
+
+    reallocgrid();
 }
 void calcKernels()
 {
@@ -442,6 +532,8 @@ void calcKernels()
 
    
 }
+GLuint emptyvao;
+
 
 void drawAll()
 {
@@ -456,6 +548,9 @@ void drawAll()
         unregisterGLBuffer();
         registerGLBuffer(vbo);
     }
+
+   
+
 
     glm::mat4 proj = glm::perspective(
         glm::radians(camera.fov),
@@ -524,7 +619,7 @@ void drawAll()
                                          sky.sunDir,
                                          camera.fov, aspect);
 	glDisable(GL_BLEND);
-    if (!rendered)
+    if (settings.shaderType==1)
     {
         glUseProgram(program);
         glUniformMatrix4fv(loc_uProj, 1, GL_FALSE, glm::value_ptr(proj));
@@ -538,7 +633,20 @@ void drawAll()
         glUseProgram(0);
     }
 
-   
+    if (settings.shaderType == 2) {
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_DEPTH_TEST);
+        glUseProgram(quadShader);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, rayTex);
+        glUniform1i(glGetUniformLocation(quadShader, "rayTexture"), 0);
+        glBindVertexArray(emptyvao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindVertexArray(0);
+        glEnable(GL_DEPTH_TEST);
+    }
 
     
 }
@@ -700,6 +808,30 @@ void framebuffer_size_callback(GLFWwindow *w, int width, int height)
     view.cz = height * 0.5f;
     view.height = (float)height;
     view.aspect = (float)width / (float)height;
+
+    settings.Fov = camera.fov;
+    settings.Aspect = view.aspect;
+    settings.Forward.x = camera.forward.x;
+    settings.Forward.y = camera.forward.y;
+    settings.Forward.z = camera.forward.z;
+    settings.Up.x = camera.up.x;
+    settings.Up.y = camera.up.y;
+    settings.Up.z = camera.up.z;
+    settings.Right.x = camera.right.x;
+    settings.Right.y = camera.right.y;
+    settings.Right.z = camera.right.z;
+    settings.campos.x = camera.position.x;
+    settings.campos.y = camera.position.y;
+    settings.campos.z = camera.position.z;
+
+    settings.x = (int)ceil((settings.maxX - settings.minX) / settings.voxelSize);
+    settings.y = (int)ceil((settings.maxY - settings.minY) / settings.voxelSize);
+    settings.z = (int)ceil((settings.maxz - settings.minZ) / settings.voxelSize);
+    settings.sw = (float)width;
+    settings.sh = (float)height;
+    rayinit(width, height);
+
+
 }
 int main()
 {
@@ -734,7 +866,7 @@ int main()
    // glEnable(GL_BLEND);
     //glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-
+    
     glViewport(0, 0, screenWidth, screenHeight);
 
     fluidRenderer.init(screenWidth, screenHeight);
@@ -744,6 +876,9 @@ int main()
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
     glfwSetScrollCallback(window, scrollCallback);
+
+
+  
 
     // CHANGE: Initialize ImGui for GLFW+OpenGL3
     IMGUI_CHECKVERSION();
@@ -782,6 +917,30 @@ int main()
     bloc_uView = glGetUniformLocation(bboxProgram, "uView");
     bloc_uColor = glGetUniformLocation(bboxProgram, "uColor");
 
+    settings.Fov = camera.fov;
+    settings.Aspect = view.aspect;
+    settings.Forward.x = camera.forward.x;
+    settings.Forward.y = camera.forward.y;
+    settings.Forward.z = camera.forward.z;
+    settings.Up.x = camera.up.x;
+    settings.Up.y = camera.up.y;
+    settings.Up.z = camera.up.z;
+    settings.Right.x = camera.right.x;
+    settings.Right.y = camera.right.y;
+    settings.Right.z = camera.right.z;
+    settings.campos.x = camera.position.x;
+    settings.campos.y = camera.position.y;
+    settings.campos.z = camera.position.z;
+
+	settings.sundir.x = sky.sunDir.x;
+	settings.sundir.y = sky.sunDir.y;
+	settings.sundir.z = sky.sunDir.z;
+  
+
+
+
+
+
 	syncstruct();
     calcKernels();
     initBoundingBox();
@@ -801,6 +960,9 @@ int main()
     }
     ensureVBOCapacity((size_t)settings.maxparticles * 3);
     registerGLBuffer(vbo);
+    initQuadShader();
+	rayinit(currentWidth, currentHeight);
+    glGenVertexArrays(1, &emptyvao);
 
     registerBodies();
 
@@ -820,6 +982,7 @@ int main()
     view.aspect = (float)screenWidth / (float)screenHeight;
     view.zoom = 1.0f;
 
+  
 
     while (!glfwWindowShouldClose(window))
     {
@@ -848,6 +1011,28 @@ int main()
         settings.wx = camera.position.x;
         settings.wy = camera.position.y;
         settings.wz = camera.position.z;
+
+        settings.Fov = camera.fov;
+        settings.Aspect = view.aspect;
+        settings.Forward.x = camera.forward.x;
+        settings.Forward.y = camera.forward.y;
+        settings.Forward.z = camera.forward.z;
+        settings.Up.x = camera.up.x;
+        settings.Up.y = camera.up.y;
+        settings.Up.z = camera.up.z;
+        settings.Right.x = camera.right.x;
+        settings.Right.y = camera.right.y;
+        settings.Right.z = camera.right.z;
+        settings.campos.x = camera.position.x;
+        settings.campos.y = camera.position.y;
+        settings.campos.z = camera.position.z;
+
+        
+        settings.sundir.x = sky.sunDir.x;
+        settings.sundir.y = sky.sunDir.y;
+        settings.sundir.z = sky.sunDir.z;
+
+
 
 		
         /*if (settings.shaderType ==0) {
@@ -921,6 +1106,7 @@ int main()
            bboxVAO, bboxVBO, bboxProgram);
 
     unregisterGLBuffer();
+    unregisterraymarch();
     // CHANGE: Cleanup OpenGL resources
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -928,6 +1114,12 @@ int main()
 
     if (program)
         glDeleteProgram(program);
+    if (quadShader)
+        glDeleteProgram(quadShader);
+    if (rayPBO)
+        glDeleteBuffers(1, &rayPBO);
+    if (rayTex)
+        glDeleteTextures(1, &rayTex);
     if (vbo)
         glDeleteBuffers(1, &vbo);
   

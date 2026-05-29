@@ -1016,7 +1016,7 @@ inline bool FluidRenderer::render(GLuint particleVAO, int particleCount,
     float fovDegrees, float aspect)
 {
     // Legacy particles: return false so drawAll() uses the original program
-    if (shaderType == 1)
+    if (shaderType == 1|| shaderType==2)
     {
         return false;
     }

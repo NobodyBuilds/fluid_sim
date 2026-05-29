@@ -693,15 +693,11 @@ static void DrawRenderContent()
     {
         static const char* modeNames[] = {
             "0  Screen-Space Water",
-            "1  Particles  (lit spheres)"
+            "1  Particles  (lit spheres)",
+            "2  volumemetric fluid with rays"
         };
-        if (ImGui::Combo("##rnmode", &settings.shaderType, modeNames, 2)) syncsettings = true;
-        ImGui::SetItemTooltip(
-            "0 = Screen-space fluid surface with sky reflection,\n"
-            "    Beer-Lambert absorption, two-lobe specular, refraction.\n"
-            "1 = Classic lit sphere particles.\n"
-            "    Heat colour effect available.\n"
-            "    Much faster — use for high particle counts.");
+        if (ImGui::Combo("##rnmode", &settings.shaderType, modeNames, 3)) syncsettings = true;
+       
     }
 
     // ── Water — mode 0 only ───────────────────────────────────────────────────
@@ -755,6 +751,27 @@ static void DrawRenderContent()
         if (settings.blurMaxRadius > 256) settings.blurMaxRadius = 256;
         ImGui::SetItemTooltip("Screen-space pixel radius cap. Prevents runaway kernels at close range.");
     }
+    if(settings.shaderType == 2){
+        Sec("Volume Rendering");
+        if (ImGui::DragFloat("Voxel Size##vr", &settings.voxelSize, 0.001f, 0.01f, 10.0f, "%.3f")) {
+            reallocgrid();
+       }
+        ImGui::SetItemTooltip(
+            
+            "Smaller = smoother but heavier.  Default 0.01.");
+
+		ImGui::DragFloat("Density Mult##vrden", &settings.scale, 0.001f, 0.01f, 10.f, "%.4f"); SYNC;
+
+		ImGui::DragFloat("Density Offset##vrdenoff", &settings.densityoffset, 0.001f, 0.f, 1.f, "%.3f"); SYNC;
+
+		ImGui::DragFloat("step size##vrstp", &settings.stepsize, 0.001f, 0.01f, 1.f, "%.3f"); SYNC;
+
+		ImGui::DragFloat("depth factor", &settings.depth, 0.001f, 0.01f, 10.f, "%.3f"); SYNC;
+
+
+        ImGui::Spacing();
+		ImGui::ColorEdit3("color##vrl", &settings.vr); SYNC;
+	}
 
 
     // ── Background — always visible ────────────────────────────────────────────

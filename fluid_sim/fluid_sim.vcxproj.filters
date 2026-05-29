@@ -10,17 +10,17 @@
     <Filter Include="ui">
       <UniqueIdentifier>{af2ecad6-4793-441d-9024-f3788b0c3088}</UniqueIdentifier>
     </Filter>
-    <Filter Include="settings">
-      <UniqueIdentifier>{7fef3366-a7fd-4365-9c6f-47be15481411}</UniqueIdentifier>
-    </Filter>
     <Filter Include="buttons">
       <UniqueIdentifier>{1a1b5ce9-6b51-4326-9346-afe28947c5d5}</UniqueIdentifier>
     </Filter>
-    <Filter Include="floor">
-      <UniqueIdentifier>{325abdf0-8e2d-4a79-a559-ecd36e18f2e1}</UniqueIdentifier>
-    </Filter>
     <Filter Include="sky">
       <UniqueIdentifier>{9bb55782-1876-46f9-971a-4842935627bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="settings">
+      <UniqueIdentifier>{7fef3366-a7fd-4365-9c6f-47be15481411}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="settings\floor">
+      <UniqueIdentifier>{325abdf0-8e2d-4a79-a559-ecd36e18f2e1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -59,7 +59,7 @@
       <Filter>buttons</Filter>
     </ClCompile>
     <ClCompile Include="floor_render.cpp">
-      <Filter>floor</Filter>
+      <Filter>settings\floor</Filter>
     </ClCompile>
     <ClCompile Include="sky.cpp">
       <Filter>sky</Filter>
@@ -81,7 +81,7 @@
       <Filter>buttons</Filter>
     </ClInclude>
     <ClInclude Include="floor.h">
-      <Filter>floor</Filter>
+      <Filter>settings\floor</Filter>
     </ClInclude>
     <ClInclude Include="sky.h">
       <Filter>sky</Filter>
@@ -93,12 +93,14 @@
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\build_cuda.bat" />
     <None Include="sky.frag">
       <Filter>sky</Filter>
     </None>
     <None Include="sky.vert">
       <Filter>sky</Filter>
+    </None>
+    <None Include="..\build_cuda.bat">
+      <Filter>ui</Filter>
     </None>
   </ItemGroup>
 </Project>
