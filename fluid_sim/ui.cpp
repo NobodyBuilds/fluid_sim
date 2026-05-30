@@ -484,6 +484,7 @@ static void DrawWorldContent()
             bchg = true;
             float diff = settings.maxX - changex;
                 settings.floorbounx += diff;
+
             if(settings.mx>settings.maxX ){
                 if(settings.spawnstate){  restartSimulation();}
                 settings.mx = settings.maxX;}
@@ -770,7 +771,7 @@ static void DrawRenderContent()
 
 
         ImGui::Spacing();
-		ImGui::ColorEdit3("color##vrl", &settings.vr); SYNC;
+        if (ImGui::ColorEdit3("Extinction##rn", &settings.extinctionR)) syncsettings = true;
 	}
 
 

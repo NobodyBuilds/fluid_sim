@@ -44,7 +44,9 @@
     <ClInclude Include="ui.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\build_cuda.bat" />
+    <None Include="..\build_cuda.bat">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </None>
     <None Include="sky.frag" />
     <None Include="sky.vert" />
   </ItemGroup>

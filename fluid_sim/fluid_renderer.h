@@ -413,7 +413,7 @@ void main(){
     // reflection and specular contributions on it so vertical/side normals
     // (edges/silhouettes) receive zero reflection, not full Fresnel.
     vec3  Nworld  = normalize(uInvViewRot * N);
-Nworld.y= Nworld.z;
+Nworld.y= Nworld.y;
   float topMask = smoothstep(-0.4, 0.2, Nworld.y);
     // ── Full Fresnel (IOR 1.0 → 1.33) ────────────────────────────────────────
     vec3  incident = -V;
@@ -463,7 +463,7 @@ surfLight *= (1.0 - waveShadow);
 
     // ── Sky reflection ────────────────────────────────────────────────────────
     vec3 reflDirV     = reflect(incident, N);
-    vec3 reflDirWorld = normalize(uInvViewRot * -reflDirV);
+    vec3 reflDirWorld = normalize(uInvViewRot * reflDirV);
 
     // FIX BUG 1: was reflDirWorld.z (camera-forward component) — wrong axis.
     // Y is world-up; gate on .y so only upward-facing reflection rays survive.

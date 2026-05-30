@@ -45,6 +45,7 @@ __host__ __device__ inline float clamp(float x, float lo, float hi)
 __host__ __device__ inline float3 operator+(float3 a, float3 b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
 __host__ __device__ inline float3 operator-(float3 a, float3 b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
 __host__ __device__ inline float3 operator*(float3 a, float s) { return {a.x * s, a.y * s, a.z * s}; }
+__host__ __device__ inline float3 operator+(float3 a, float s) { return {a.x + s, a.y + s, a.z + s}; }
 __host__ __device__ inline float3 operator/(float3 a, float s) { return {a.x / s, a.y / s, a.z / s}; }
 __host__ __device__ inline float3 operator*(float s, float3 a)
 {
@@ -181,12 +182,22 @@ extern "C" void syncstruct() {
 	h.epsilon = settings.epsilon;
     h.scale = settings.scale;
     h.neargrad = settings.neargrad;
-    h.vr = settings.vr;
-    h.vg = settings.vg;
-    h.vb = settings.vb;
+   
 	h.densityoffset = settings.densityoffset;
     h.stepsize = settings.stepsize;
 	h.depth = settings.depth;
+    h.extinctionR = settings.extinctionR;
+    h.extinctionG = settings.extinctionG;
+    h.extinctionB = settings.extinctionB;
+	h.variationStrength = settings.variationStrength;
+	h.tilesize = settings.tilesize;
+	h.col1 = make_float3(settings.color1R, settings.color1G, settings.color1B);
+	h.col2 = make_float3(settings.color2R, settings.color2G, settings.color2B);
+	h.col3 = make_float3(settings.color3R, settings.color3G, settings.color3B);
+	h.col4 = make_float3(settings.color4R, settings.color4G, settings.color4B);
+	h.centerx = (settings.floorbounx+(settings.floorboun_x))/2.0f;
+	h.centerz = (settings.floorbounz+(settings.floorboun_z))/2.0f;
+    
 	cudaMemcpyToSymbol(d, &h, sizeof(data));
 
 }
@@ -1368,6 +1379,392 @@ __global__ void splatVoxelsTrilinear(const float4* __restrict__ pos, float* grid
 
 
 
+
+extern "C" void reallocgrid() {
+    settings.x = (int)ceilf((settings.maxX - settings.minX) / settings.voxelSize);
+    settings.y = (int)ceilf((settings.maxY - settings.minY) / settings.voxelSize);
+    settings.z = (int)ceilf((settings.maxz - settings.minZ) / settings.voxelSize);
+    if (settings.x < 1) settings.x = 1;
+    if (settings.y < 1) settings.y = 1;
+    if (settings.z < 1) settings.z = 1;
+
+    if (voxelgrid) {
+        cudaFree(voxelgrid);
+        voxelgrid = nullptr;
+    }
+    size_t gridSize = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
+    cudaMalloc(&voxelgrid, gridSize);
+    cudaMemset(voxelgrid, 0, gridSize);
+}
+
+size_t free_mem, total_mem;
+float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
+
+__device__ __forceinline__ float voxelValue(const float* __restrict__ grid, int x, int y, int z, int ix, int iy, int iz)
+{
+    if (ix < 0 || ix >= x || iy < 0 || iy >= y || iz < 0 || iz >= z)
+        return 0.0f;
+    return __ldg(&grid[iz * y * x + iy * x + ix]);
+}
+
+__device__ __forceinline__ float sampleVoxelsTrilinear(const float* __restrict__ grid, float3 pos, float size, int x, int y, int z)
+{
+    float gx = (pos.x - d.minX) / size - 0.5f;
+    float gy = (pos.y - d.minY) / size - 0.5f;
+    float gz = (pos.z - d.minZ) / size - 0.5f;
+
+    int x0 = (int)floorf(gx);
+    int y0 = (int)floorf(gy);
+    int z0 = (int)floorf(gz);
+
+    float fx = gx - x0;
+    float fy = gy - y0;
+    float fz = gz - z0;
+
+    float c000 = voxelValue(grid, x, y, z, x0,     y0,     z0);
+    float c100 = voxelValue(grid, x, y, z, x0 + 1, y0,     z0);
+    float c010 = voxelValue(grid, x, y, z, x0,     y0 + 1, z0);
+    float c110 = voxelValue(grid, x, y, z, x0 + 1, y0 + 1, z0);
+    float c001 = voxelValue(grid, x, y, z, x0,     y0,     z0 + 1);
+    float c101 = voxelValue(grid, x, y, z, x0 + 1, y0,     z0 + 1);
+    float c011 = voxelValue(grid, x, y, z, x0,     y0 + 1, z0 + 1);
+    float c111 = voxelValue(grid, x, y, z, x0 + 1, y0 + 1, z0 + 1);
+
+    float c00 = lerp(c000, c100, fx);
+    float c10 = lerp(c010, c110, fx);
+    float c01 = lerp(c001, c101, fx);
+    float c11 = lerp(c011, c111, fx);
+    float c0 = lerp(c00, c10, fy);
+    float c1 = lerp(c01, c11, fy);
+    return lerp(c0, c1, fz);
+}
+
+
+__device__ __forceinline__ float3 calcNormal(
+    const float* __restrict__ grid, float3 pos, float size, int x, int y, int z)
+{
+    float eps = size;  // one voxel width
+    float dx = sampleVoxelsTrilinear(grid, { pos.x + eps, pos.y, pos.z }, size, x, y, z)
+        - sampleVoxelsTrilinear(grid, { pos.x - eps, pos.y, pos.z }, size, x, y, z);
+    float dy = sampleVoxelsTrilinear(grid, { pos.x, pos.y + eps, pos.z }, size, x, y, z)
+        - sampleVoxelsTrilinear(grid, { pos.x, pos.y - eps, pos.z }, size, x, y, z);
+    float dz = sampleVoxelsTrilinear(grid, { pos.x, pos.y, pos.z + eps }, size, x, y, z)
+        - sampleVoxelsTrilinear(grid, { pos.x, pos.y, pos.z - eps }, size, x, y, z);
+    return normalize({ -dx, -dy, -dz });  // negative = points outward
+}
+
+__device__ __forceinline__ float3 getSkyColor(float3 rd, float3 sunDir) {
+    float sunDot = fmaxf(dot(rd, sunDir), 0.0f);
+    float horizon = fmaxf(rd.y, 0.0f);
+
+    float3 zenith = { 0.1f, 0.3f, 0.8f };
+    float  t = clamp(sunDir.y + 0.3f, 0.0f, 1.0f);
+    float3 horizCol = { 0.9f * (1.0f - t) + 0.7f * t,
+                       0.5f * (1.0f - t) + 0.8f * t,
+                       0.2f * (1.0f - t) + 0.9f * t };
+
+    float  hpow = powf(horizon, 0.5f);
+    float3 sky = { horizCol.x + (zenith.x - horizCol.x) * hpow,
+                   horizCol.y + (zenith.y - horizCol.y) * hpow,
+                   horizCol.z + (zenith.z - horizCol.z) * hpow };
+
+    float mie = powf(sunDot, 8.0f) * 0.4f;
+    sky.x += 1.0f * mie;
+    sky.y += 0.8f * mie;
+    sky.z += 0.5f * mie;
+
+    if (sunDot > 0.9997f) { sky = { 1.5f, 1.6f, 0.9f }; }
+
+    float ground = clamp(-rd.y * 8.0f, 0.0f, 1.0f);
+    sky.x = sky.x * (1.0f - ground) + 0.15f * ground;
+    sky.y = sky.y * (1.0f - ground) + 0.12f * ground;
+    sky.z = sky.z * (1.0f - ground) + 0.10f * ground;
+
+    return sky;
+}
+ 
+__device__ float hashFloor(float px, float pz) {
+    float v = sinf(px * 127.1f + pz * 311.7f) * 43758.5453f;
+    return v - floorf(v);
+}
+
+__device__ float3 sampleFloorColor(float wx, float wz, float3 sundir) {
+    float2 tile = { floorf(wx / d.tilesize), floorf(wz / d.tilesize) };
+
+    float checker = fmodf(tile.x + tile.y, 2.0f);
+    if (checker < 0.0f) checker += 2.0f; // negative tile coords fix
+
+    float3 col;
+    if (wx > d.centerx && wz > d.centerz) col = d.col4;
+    else if (wx < d.centerx && wz > d.centerz) col = d.col3;
+    else if (wx < d.centerx && wz < d.centerz) col = d.col2;
+    else                                                  col = d.col1;
+
+    float3 baseColor = (checker < 0.5f) ? col * 1.1f : col * 0.85f;
+
+    float rnd = hashFloor(tile.x, tile.y);
+    baseColor.x += (rnd - 0.5f) * d.variationStrength;
+    baseColor.y += (rnd - 0.5f) * d.variationStrength;
+    baseColor.z += (rnd - 0.5f) * d.variationStrength;
+
+    float diff = fmaxf(dot({ 0.f,1.f,0.f }, normalize(sundir)), 0.0f);
+    float light = fmaxf(diff, 0.02f);
+
+    return {
+        clamp(baseColor.x * light, 0.f, 1.f),
+        clamp(baseColor.y * light, 0.f, 1.f),
+        clamp(baseColor.z * light, 0.f, 1.f)
+    };
+}
+
+__global__ void reymarch(uchar4* output,float* grid,int sw,int sh,
+	float3 campos, float3 forward, float3 right, float3 up, float aspect, int x, int y, int z, float size, float halftanfov,float3 sundir
+    ){
+	int px = blockIdx.x * blockDim.x + threadIdx.x;
+	int py = blockIdx.y * blockDim.y + threadIdx.y;
+    if (px >= sw || py >= sh) return;
+
+    float u = (2 * (px + 0.5f) / sw - 1);
+	float v = (1 - 2 * (py + 0.5f) / sh);
+
+	u *= halftanfov* aspect;
+    v *= halftanfov;
+	float3 dir = forward + u * right + v * up;
+	dir = normalize(dir);
+    float density = 0.0f;
+	uchar4 color = { 0, 0, 0, 255 };
+    float3 invDir = { 1.f / dir.x, 1.f / dir.y, 1.f / dir.z };
+
+    float t0x = (d.minX - campos.x) * invDir.x;
+    float t1x = (d.maxX - campos.x) * invDir.x;
+    float tMinX = fminf(t0x, t1x);
+    float tMaxX = fmaxf(t0x, t1x);
+
+    float t0y = (d.minY - campos.y) * invDir.y;
+    float t1y = (d.maxY - campos.y) * invDir.y;
+    float tMinY = fminf(t0y, t1y);
+    float tMaxY = fmaxf(t0y, t1y);
+
+    float t0z = (d.minZ - campos.z) * invDir.z;
+    float t1z = (d.maxZ - campos.z) * invDir.z;
+    float tMinZ = fminf(t0z, t1z);
+    float tMaxZ = fmaxf(t0z, t1z);
+
+    float t_enter = fmaxf(fmaxf(tMinX, tMinY), tMinZ);
+    float t_exit = fminf(fminf(tMaxX, tMaxY), tMaxZ);
+
+    if (t_exit < t_enter || t_exit < 0.f) {
+        output[py * sw + px] = { 0, 0, 0, 0}; 
+        return;
+    }
+
+    float stepsize = d.stepsize;
+    float t_start = fmaxf(t_enter, 0.0f);
+    float t = t_start + fminf(stepsize * 0.5f, fmaxf((t_exit - t_start) * 0.5f, 0.0001f));
+    int steps = (int)((t_exit - t) / stepsize) + 1;
+    for (int i = 0; i < steps; i++) {
+        if (t > t_exit) break;
+        float3 pos = campos + dir * t;
+        t += stepsize;
+        density = sampleVoxelsTrilinear(grid, pos, size, x, y, z);
+        if (density > d.densityoffset) {
+            float depth = t_exit - t;
+            float3 n = calcNormal(grid, pos, size, x, y, z);//normals
+            float3 viewDir = normalize(-dir);
+
+			float diffuse = max(dot(n, sundir), 0.0f);
+
+			float3 h = normalize(sundir + viewDir); 
+
+            float specular = pow(max(dot(n, h), 0.0), 256);
+
+            float F0 = powf(((1.003f - 1.333f) / (1.003f + 1.333f)), 2.0f);
+
+			float fresnel = F0 + (1.0f - F0) * powf(1.0f - max(dot(n, viewDir), 0.0f), 5.0f);
+
+            float3 reflDir = dir - 2 * dot(dir, n) * n;
+			float3 skyColor = getSkyColor(-reflDir, sundir);
+
+            float eta = 1.0f / 1.33f;
+            float cosI = -dot(n, dir);
+            float sinT2 = eta * eta * (1.0f - cosI * cosI);
+            float cosT = sqrtf(1.0f - sinT2);
+            float3 refrDir = eta * dir + (eta * cosI - cosT) * n;
+            refrDir = normalize(refrDir);
+
+            float3 refrColor;
+            if (refrDir.y < 0.0f) {
+                float floorY = d.minY - 1.0f;
+                float tFloor = (floorY - pos.y) / refrDir.y;
+                float3 floorHit = pos + refrDir * tFloor;
+
+                refrColor = sampleFloorColor(floorHit.x, floorHit.z, sundir);
+            }
+            else {
+                refrColor = getSkyColor(refrDir,sundir);
+            }
+            float3 absCoeff = { d.extinctionR, d.extinctionG, d.extinctionB };
+            float optical = depth * d.scale;
+            float3 transmittance = {
+                 expf(-absCoeff.x * optical),
+                 expf(-absCoeff.y * optical),
+                 expf(-absCoeff.z * optical)
+                         };
+            float3 tintedRefr = {
+                 refrColor.x * transmittance.x,
+                 refrColor.y * transmittance.y,
+                 refrColor.z * transmittance.z
+            };
+
+            float3 color{ .05f,.35f,.55f };
+
+			float3 ambient = skyColor * 0.2f;
+
+            float3 finalColor = ambient+fresnel *skyColor+(1.0f- fresnel) * tintedRefr + specular;//sun color 255
+
+            finalColor.x = clamp(finalColor.x, 0.0f, 1.0f);
+            finalColor.y = clamp(finalColor.y, 0.0f, 1.0f);
+            finalColor.z = clamp(finalColor.z, 0.0f, 1.0f);
+
+            output[py * sw + px] = {
+                (unsigned char)(finalColor.x * 255.0f),
+                (unsigned char)(finalColor.y * 255.0f),
+                (unsigned char)(finalColor.z * 255.0f),
+               255,
+            };
+
+            
+
+            return;
+
+
+        }
+    }
+    
+        output[py * sw + px] = { 255, 255, 255, 0 };
+}
+
+
+
+cudaGraphicsResource* rayPBOResource = nullptr;
+
+static unsigned int s_rayPBO = 0;
+static unsigned int s_rayTex = 0;
+
+extern "C" void unregisterraymarch() {
+    if (rayPBOResource) {
+        cudaGraphicsUnregisterResource(rayPBOResource);
+        rayPBOResource = nullptr;
+    }
+    s_rayPBO = 0;
+    s_rayTex = 0;
+}
+
+extern "C" void initraymarch(unsigned int rayPBO, unsigned int rayTex) {
+    unregisterraymarch();
+    cudaMemGetInfo(&free_mem, &total_mem);
+    printf("VRAM free: %.2f MB / %.2f MB\n", free_mem / 1024.0 / 1024.0, total_mem / 1024.0 / 1024.0);
+
+    s_rayPBO = rayPBO;
+    s_rayTex = rayTex;
+    cudaError_t err = cudaGraphicsGLRegisterBuffer(&rayPBOResource, rayPBO, cudaGraphicsRegisterFlagsWriteDiscard);
+    if (err != cudaSuccess) {
+        printf("ERROR: cudaGraphicsGLRegisterBuffer(rayPBO): %s\n", cudaGetErrorString(err));
+        rayPBOResource = nullptr;
+    }
+}
+
+extern "C" void render() {
+    int blocks = (settings.count + THREADS - 1) / THREADS;
+    if (blocks <= 0)
+        return;
+
+   
+
+    if (settings.shaderType != 2) {
+    cudaError_t err = cudaGraphicsMapResources(1, &g_vboResource, 0);
+    if (err != cudaSuccess) {
+        printf("ERROR: cudaGraphicsMapResources(VBO): %s\n", cudaGetErrorString(err));
+        return;
+    }
+
+    GLVertex* d_vbo = nullptr;
+    size_t nbytes = 0;
+    err = cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
+    if (err != cudaSuccess) {
+        printf("ERROR: cudaGraphicsResourceGetMappedPointer(VBO): %s\n", cudaGetErrorString(err));
+        cudaGraphicsUnmapResources(1, &g_vboResource, 0);
+        return;
+    }
+        packToVBOKernel << <blocks, THREADS >> > (
+            settings.count, positions, velocity, accelration,
+            d_vbo, settings.heateffect, settings.heatMultiplier,
+            settings.fixedDt, settings.cold, settings.size, settings.particlecolorR, settings.particlecolorG, settings.particlecolorB);
+    cudaGraphicsUnmapResources(1, &g_vboResource, 0);
+    }
+}
+
+void raymarchingrender() {
+
+    int blocks = (settings.count + THREADS - 1) / THREADS;
+    if (blocks <= 0)
+        return;
+
+    if (settings.shaderType == 2) {
+        if (settings.shaderType == 2) {
+            if (!voxelgrid || !rayPBOResource)
+                return;
+
+            size_t voxelBytes = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
+            cudaMemset(voxelgrid, 0, voxelBytes);
+            splatVoxelsTrilinear << <blocks, THREADS >> > (positions, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
+
+            cudaError_t err = cudaGraphicsMapResources(1, &rayPBOResource, 0);
+            if (err != cudaSuccess) {
+                printf("ERROR: cudaGraphicsMapResources(rayPBO): %s\n", cudaGetErrorString(err));
+                return;
+            }
+
+            uchar4* d_pixels = nullptr;
+            size_t numBytes = 0;
+            err = cudaGraphicsResourceGetMappedPointer((void**)&d_pixels, &numBytes, rayPBOResource);
+            if (err != cudaSuccess) {
+                printf("ERROR: cudaGraphicsResourceGetMappedPointer(rayPBO): %s\n", cudaGetErrorString(err));
+                cudaGraphicsUnmapResources(1, &rayPBOResource, 0);
+                return;
+            }
+
+            float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
+            int sw = (int)settings.sw;
+            int sh = (int)settings.sh;
+            dim3 block(16, 16);
+            dim3 grid((sw + block.x - 1) / block.x, (sh + block.y - 1) / block.y);
+            reymarch << <grid, block >> > (
+                d_pixels, voxelgrid,
+                sw, sh,
+                settings.campos, settings.Forward, settings.Right, settings.Up,
+                settings.Aspect,
+                settings.x, settings.y, settings.z,
+                settings.voxelSize,
+                tamfov, settings.sundir);
+
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                printf("ERROR: reymarch launch: %s\n", cudaGetErrorString(err));
+            }
+
+            cudaGraphicsUnmapResources(1, &rayPBOResource, 0);
+
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_rayPBO);
+            glBindTexture(GL_TEXTURE_2D, s_rayTex);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            return;
+        }
+    }
+}
+
 extern "C" void computephysics(float dt)
 {
     int blocks = (settings.count + THREADS - 1) / THREADS;
@@ -1522,278 +1919,7 @@ extern "C" void computephysics(float dt)
         settings.h_cob = (h_result != 0);
     }
 
+    raymarchingrender();
+
     
-}
-
-extern "C" void reallocgrid() {
-    settings.x = (int)ceilf((settings.maxX - settings.minX) / settings.voxelSize);
-    settings.y = (int)ceilf((settings.maxY - settings.minY) / settings.voxelSize);
-    settings.z = (int)ceilf((settings.maxz - settings.minZ) / settings.voxelSize);
-    if (settings.x < 1) settings.x = 1;
-    if (settings.y < 1) settings.y = 1;
-    if (settings.z < 1) settings.z = 1;
-
-    if (voxelgrid) {
-        cudaFree(voxelgrid);
-        voxelgrid = nullptr;
-    }
-    size_t gridSize = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
-    cudaMalloc(&voxelgrid, gridSize);
-    cudaMemset(voxelgrid, 0, gridSize);
-}
-
-size_t free_mem, total_mem;
-float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
-
-__device__ __forceinline__ float voxelValue(const float* __restrict__ grid, int x, int y, int z, int ix, int iy, int iz)
-{
-    if (ix < 0 || ix >= x || iy < 0 || iy >= y || iz < 0 || iz >= z)
-        return 0.0f;
-    return __ldg(&grid[iz * y * x + iy * x + ix]);
-}
-
-__device__ __forceinline__ float sampleVoxelsTrilinear(const float* __restrict__ grid, float3 pos, float size, int x, int y, int z)
-{
-    float gx = (pos.x - d.minX) / size - 0.5f;
-    float gy = (pos.y - d.minY) / size - 0.5f;
-    float gz = (pos.z - d.minZ) / size - 0.5f;
-
-    int x0 = (int)floorf(gx);
-    int y0 = (int)floorf(gy);
-    int z0 = (int)floorf(gz);
-
-    float fx = gx - x0;
-    float fy = gy - y0;
-    float fz = gz - z0;
-
-    float c000 = voxelValue(grid, x, y, z, x0,     y0,     z0);
-    float c100 = voxelValue(grid, x, y, z, x0 + 1, y0,     z0);
-    float c010 = voxelValue(grid, x, y, z, x0,     y0 + 1, z0);
-    float c110 = voxelValue(grid, x, y, z, x0 + 1, y0 + 1, z0);
-    float c001 = voxelValue(grid, x, y, z, x0,     y0,     z0 + 1);
-    float c101 = voxelValue(grid, x, y, z, x0 + 1, y0,     z0 + 1);
-    float c011 = voxelValue(grid, x, y, z, x0,     y0 + 1, z0 + 1);
-    float c111 = voxelValue(grid, x, y, z, x0 + 1, y0 + 1, z0 + 1);
-
-    float c00 = lerp(c000, c100, fx);
-    float c10 = lerp(c010, c110, fx);
-    float c01 = lerp(c001, c101, fx);
-    float c11 = lerp(c011, c111, fx);
-    float c0 = lerp(c00, c10, fy);
-    float c1 = lerp(c01, c11, fy);
-    return lerp(c0, c1, fz);
-}
-
-
-__device__ __forceinline__ float3 calcNormal(
-    const float* __restrict__ grid, float3 pos, float size, int x, int y, int z)
-{
-    float eps = size;  // one voxel width
-    float dx = sampleVoxelsTrilinear(grid, { pos.x + eps, pos.y, pos.z }, size, x, y, z)
-        - sampleVoxelsTrilinear(grid, { pos.x - eps, pos.y, pos.z }, size, x, y, z);
-    float dy = sampleVoxelsTrilinear(grid, { pos.x, pos.y + eps, pos.z }, size, x, y, z)
-        - sampleVoxelsTrilinear(grid, { pos.x, pos.y - eps, pos.z }, size, x, y, z);
-    float dz = sampleVoxelsTrilinear(grid, { pos.x, pos.y, pos.z + eps }, size, x, y, z)
-        - sampleVoxelsTrilinear(grid, { pos.x, pos.y, pos.z - eps }, size, x, y, z);
-    return normalize({ -dx, -dy, -dz });  // negative = points outward
-}
-
-
-__global__ void reymarch(uchar4* output,float* grid,int sw,int sh,
-	float3 campos, float3 forward, float3 right, float3 up, float aspect, int x, int y, int z, float size, float halftanfov,float3 sundir
-    ){
-	int px = blockIdx.x * blockDim.x + threadIdx.x;
-	int py = blockIdx.y * blockDim.y + threadIdx.y;
-    if (px >= sw || py >= sh) return;
-
-    float u = (2 * (px + 0.5f) / sw - 1);
-	float v = (1 - 2 * (py + 0.5f) / sh);
-
-	u *= halftanfov* aspect;
-    v *= halftanfov;
-	float3 dir = forward + u * right + v * up;
-	dir = normalize(dir);
-    float density = 0.0f;
-	uchar4 color = { 0, 0, 0, 255 };
-    float scale = d.scale; // tune 
-    float3 invDir = { 1.f / dir.x, 1.f / dir.y, 1.f / dir.z };
-
-    float t0x = (d.minX - campos.x) * invDir.x;
-    float t1x = (d.maxX - campos.x) * invDir.x;
-    float tMinX = fminf(t0x, t1x);
-    float tMaxX = fmaxf(t0x, t1x);
-
-    float t0y = (d.minY - campos.y) * invDir.y;
-    float t1y = (d.maxY - campos.y) * invDir.y;
-    float tMinY = fminf(t0y, t1y);
-    float tMaxY = fmaxf(t0y, t1y);
-
-    float t0z = (d.minZ - campos.z) * invDir.z;
-    float t1z = (d.maxZ - campos.z) * invDir.z;
-    float tMinZ = fminf(t0z, t1z);
-    float tMaxZ = fmaxf(t0z, t1z);
-
-    float t_enter = fmaxf(fmaxf(tMinX, tMinY), tMinZ);
-    float t_exit = fminf(fminf(tMaxX, tMaxY), tMaxZ);
-
-    if (t_exit < t_enter || t_exit < 0.f) {
-        output[py * sw + px] = { 0, 0, 0, 0}; 
-        return;
-    }
-
-    float stepsize = d.stepsize;
-    float t_start = fmaxf(t_enter, 0.0f);
-    float t = t_start + fminf(stepsize * 0.5f, fmaxf((t_exit - t_start) * 0.5f, 0.0001f));
-    int steps = (int)((t_exit - t) / stepsize) + 1;
-    for (int i = 0; i < steps; i++) {
-		if (t > t_exit) break;
-        float3 pos = campos+ dir*t;
-        t += stepsize;
-		 density = sampleVoxelsTrilinear(grid, pos, size, x, y, z);
-         if (density > d.densityoffset) {
-             float depth = t_exit - t;
-             float3 n = calcNormal(grid, pos, size, x, y, z);//normals
-             float3 viewDir = normalize(-dir);  
-             float diffuse = fmaxf(dot(n, sundir), 0.0f);
-
-             float ambient = 0.15f;
-
-             float3 halfVec = normalize(sundir + viewDir);
-             float spec = powf(fmaxf(dot(n, halfVec), 0.0f), 64.0f); // shiny water
-
-             float cosTheta = fmaxf(dot(n, viewDir), 0.0f);
-             float fresnel = 0.04f + 0.3f * powf(1.0f - cosTheta, 5.0f);
-
-             
-             float light = ambient + diffuse;
-
-             float wcr = d.vr ;
-			 float wcg = d.vg ;
-			 float wcb = d.vb ;
-
-             float r = wcr * light*(1.0f- fresnel) + spec;
-             float g = wcg * light*(1.0f- fresnel) + spec;
-             float b = wcb * light*(1.0f- fresnel) + spec;
-
-             output[py * sw + px] = {
-                 (unsigned char)(fminf(r, 1.f) * 255.f),
-                 (unsigned char)(fminf(g, 1.f) * 255.f),
-                 (unsigned char)(fminf(b, 1.f) * 255.f),
-                 255
-             };
-             return;
-    }
-    
-    }
-        output[py * sw + px] = { 255, 255, 255, 0 };
-}
-
-
-
-cudaGraphicsResource* rayPBOResource = nullptr;
-
-static unsigned int s_rayPBO = 0;
-static unsigned int s_rayTex = 0;
-
-extern "C" void unregisterraymarch() {
-    if (rayPBOResource) {
-        cudaGraphicsUnregisterResource(rayPBOResource);
-        rayPBOResource = nullptr;
-    }
-    s_rayPBO = 0;
-    s_rayTex = 0;
-}
-
-extern "C" void initraymarch(unsigned int rayPBO, unsigned int rayTex) {
-    unregisterraymarch();
-    cudaMemGetInfo(&free_mem, &total_mem);
-    printf("VRAM free: %.2f MB / %.2f MB\n", free_mem / 1024.0 / 1024.0, total_mem / 1024.0 / 1024.0);
-
-    s_rayPBO = rayPBO;
-    s_rayTex = rayTex;
-    cudaError_t err = cudaGraphicsGLRegisterBuffer(&rayPBOResource, rayPBO, cudaGraphicsRegisterFlagsWriteDiscard);
-    if (err != cudaSuccess) {
-        printf("ERROR: cudaGraphicsGLRegisterBuffer(rayPBO): %s\n", cudaGetErrorString(err));
-        rayPBOResource = nullptr;
-    }
-}
-
-extern "C" void render() {
-    int blocks = (settings.count + THREADS - 1) / THREADS;
-    if (blocks <= 0)
-        return;
-
-    if (settings.shaderType == 2) {
-        if (!voxelgrid || !rayPBOResource)
-            return;
-
-        size_t voxelBytes = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
-        cudaMemset(voxelgrid, 0, voxelBytes);
-        splatVoxelsTrilinear<<<blocks, THREADS>>>(positions, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
-
-        cudaError_t err = cudaGraphicsMapResources(1, &rayPBOResource, 0);
-        if (err != cudaSuccess) {
-            printf("ERROR: cudaGraphicsMapResources(rayPBO): %s\n", cudaGetErrorString(err));
-            return;
-        }
-
-        uchar4* d_pixels = nullptr;
-        size_t numBytes = 0;
-        err = cudaGraphicsResourceGetMappedPointer((void**)&d_pixels, &numBytes, rayPBOResource);
-        if (err != cudaSuccess) {
-            printf("ERROR: cudaGraphicsResourceGetMappedPointer(rayPBO): %s\n", cudaGetErrorString(err));
-            cudaGraphicsUnmapResources(1, &rayPBOResource, 0);
-            return;
-        }
-
-        float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
-        int sw = (int)settings.sw;
-        int sh = (int)settings.sh;
-        dim3 block(16, 16);
-        dim3 grid((sw + block.x - 1) / block.x, (sh + block.y - 1) / block.y);
-        reymarch<<<grid, block>>>(
-            d_pixels, voxelgrid,
-            sw, sh,
-            settings.campos, settings.Forward, settings.Right, settings.Up,
-            settings.Aspect,
-            settings.x, settings.y, settings.z,
-            settings.voxelSize,
-            tamfov,settings.sundir);
-
-        err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            printf("ERROR: reymarch launch: %s\n", cudaGetErrorString(err));
-        }
-
-        cudaGraphicsUnmapResources(1, &rayPBOResource, 0);
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_rayPBO);
-        glBindTexture(GL_TEXTURE_2D, s_rayTex);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-        return;
-    }
-
-    cudaError_t err = cudaGraphicsMapResources(1, &g_vboResource, 0);
-    if (err != cudaSuccess) {
-        printf("ERROR: cudaGraphicsMapResources(VBO): %s\n", cudaGetErrorString(err));
-        return;
-    }
-
-    if (settings.shaderType != 2) {
-    GLVertex* d_vbo = nullptr;
-    size_t nbytes = 0;
-    err = cudaGraphicsResourceGetMappedPointer((void**)&d_vbo, &nbytes, g_vboResource);
-    if (err != cudaSuccess) {
-        printf("ERROR: cudaGraphicsResourceGetMappedPointer(VBO): %s\n", cudaGetErrorString(err));
-        cudaGraphicsUnmapResources(1, &g_vboResource, 0);
-        return;
-    }
-        packToVBOKernel << <blocks, THREADS >> > (
-            settings.count, positions, velocity, accelration,
-            d_vbo, settings.heateffect, settings.heatMultiplier,
-            settings.fixedDt, settings.cold, settings.size, settings.particlecolorR, settings.particlecolorG, settings.particlecolorB);
-    cudaGraphicsUnmapResources(1, &g_vboResource, 0);
-    }
 }

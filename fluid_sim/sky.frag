@@ -25,8 +25,8 @@ vec3 getSkyColor(vec3 rd, vec3 sunDir) {
    sky = mix(sky, vec3(1.5, 1.6, 0.9) * u_SunIntensity, disk);
 
     // Below horizon: ground fog
-    float ground = clamp(-rd.y * 8.0, 0.0, 1.0);
-    sky = mix(sky, vec3(0.15, 0.12, 0.1), ground);
+   // float ground = clamp(-rd.y * 8.0, 0.0, 1.0);
+  //  sky = mix(sky, vec3(0.15, 0.12, 0.1), ground);
 
     return sky;
 }

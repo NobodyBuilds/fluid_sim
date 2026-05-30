@@ -92,7 +92,7 @@ struct param {
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
-	float extinctionR = 0.6270f, extinctionG = 0.110f, extinctionB = 0.0f;
+	float extinctionR = 1.f, extinctionG = 0.0f, extinctionB = 0.0f;
 	float mx = 75.0f, mz = 50.0f, my = 75.0f;
 	float nx = -75.0f, nz = -50.0f, ny = 25.0f;
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
@@ -107,7 +107,7 @@ struct param {
 	float blurStrength = 0.250f;    // sigma scale factor
 	float blurDiffStrength = 0.1f;     // depth-similarity falloff
 	float refrMult = 1.8f;     // refraction ray march scale
-	float scale = 0.01f;
+	float scale = 0.13f;
 	float densityoffset = 0.09f;
 	float voxelSize = 2.0f;
 	int dy = 25;
@@ -152,6 +152,11 @@ struct param {
 extern param settings;
 
 struct data {
+	float3 col1;
+	float3 col2;
+	float3 col3;
+	float3 col4;
+	float centerx; 	float centerz;
 	float dt;
 	float downf;
 	float particlemass;
@@ -169,6 +174,7 @@ struct data {
 	float dst;
 	float pressure;
 	float nearpressure;
+	float extinctionR , extinctionG , extinctionB ;
 	float restDensity;
 	float nearrestdensity;
 	float spikyGradv;
@@ -183,6 +189,8 @@ struct data {
 	float tilesize;
 	float depth;
 	float stepsize;
+	float variationStrength ;
+	
 	int count;
 	int flowcount;
 };
