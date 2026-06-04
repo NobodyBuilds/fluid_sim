@@ -31,7 +31,7 @@ static int *d_particleHash_alt = nullptr; // double buffer
 static int *d_particleIndex_alt = nullptr;
 int HASH_TABLE_SIZE; // 2^18 - adjust based on particle count
 int d_count;
-
+size_t free_mem, total_mem;
 // debug
 __device__ int min_nb, max_nb, avg_nb = 0;
 __device__ float min_Density, max_Density, avg_Density = 0;
@@ -1029,7 +1029,7 @@ __global__ void checkOutOfBounds(int n, float4* pos, int* cob)
     }
 }
 // update
-__global__ void updateKernel( float dt,float4 *pos, float4 *vel, float4 *acl
+__global__ void updateKernel( float dt,float4 *pos, float4 *vel, float4 *acl,float4 target,float radius,bool t,float omega,float steer
     )
 {
     // Vec3 acc_new;
@@ -1058,6 +1058,29 @@ __global__ void updateKernel( float dt,float4 *pos, float4 *vel, float4 *acl
     p.x +=   vl.x* dt;
     p.y +=   vl.y* dt;
     p.z +=   vl.z* dt;
+
+    if (t)
+    {
+        float dx = p.x - target.x;
+        float dz = p.z - target.z;
+        float r2 = dx * dx + dz * dz;
+        float rr = radius * radius;
+        if (r2 < rr && r2 > 1e-6f &&
+            p.y >= 0.0f && p.y <= target.w)
+        {
+            float invR = rsqrtf(r2);   // fast, already have r2
+
+            float tx = -dz * invR;
+            float tz = dx * invR;
+
+            float curTang = vl.x * tx + vl.z * tz;
+            float targetTang = omega * sqrtf(r2);
+            float deltaV = (targetTang - curTang) * steer * dt;
+
+            vl.x += tx * deltaV;
+            vl.z += tz * deltaV;
+        }
+    }
     a.x = 0;
     a.y = 0;
     a.z = 0;
@@ -1397,7 +1420,6 @@ extern "C" void reallocgrid() {
     cudaMemset(voxelgrid, 0, gridSize);
 }
 
-size_t free_mem, total_mem;
 float tamfov = tanf(settings.Fov * 0.5f * 3.14159f / 180.0f);
 
 __device__ __forceinline__ float voxelValue(const float* __restrict__ grid, int x, int y, int z, int ix, int iy, int iz)
@@ -1492,7 +1514,7 @@ __device__ float3 sampleFloorColor(float wx, float wz, float3 sundir) {
     float2 tile = { floorf(wx / d.tilesize), floorf(wz / d.tilesize) };
 
     float checker = fmodf(tile.x + tile.y, 2.0f);
-    if (checker < 0.0f) checker += 2.0f; // negative tile coords fix
+  
 
     float3 col;
     if (wx > d.centerx && wz > d.centerz) col = d.col4;
@@ -1500,7 +1522,7 @@ __device__ float3 sampleFloorColor(float wx, float wz, float3 sundir) {
     else if (wx < d.centerx && wz < d.centerz) col = d.col2;
     else                                                  col = d.col1;
 
-    float3 baseColor = (checker < 0.5f) ? col * 1.1f : col * 0.85f;
+    float3 baseColor =  col * 1.1f ;
 
     float rnd = hashFloor(tile.x, tile.y);
     baseColor.x += (rnd - 0.5f) * d.variationStrength;
@@ -1765,6 +1787,8 @@ void raymarchingrender() {
     }
 }
 
+
+
 extern "C" void computephysics(float dt)
 {
     int blocks = (settings.count + THREADS - 1) / THREADS;
@@ -1780,9 +1804,12 @@ extern "C" void computephysics(float dt)
     {
         for (int i = 0; i < settings.substeps; i++)
         {
-            // update positipons
 
-            updateKernel<<<blocks, THREADS>>>( deltaTime,positions, velocity, accelration);
+
+
+
+            // update pos
+            updateKernel<<<blocks, THREADS>>>( deltaTime,positions, velocity, accelration,make_float4(0.0f,0.0f,0.0f,settings.ylevel),settings.zoneradius,settings.turbulence,settings.omega,settings.steer);
             // acelrations reset
 
             if (settings.sph)
@@ -1797,10 +1824,10 @@ extern "C" void computephysics(float dt)
 
                 if (settings.shaderType == 2) {
 
-                    cudaMemset(voxelgrid, 0, settings.x * settings.y * settings.z * sizeof(float));
+                   // cudaMemset(voxelgrid, 0, settings.x * settings.y * settings.z * sizeof(float));
 
 
-                    splatVoxelsTrilinear << <blocks, THREADS >> > (positions_sorted, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
+                    //splatVoxelsTrilinear << <blocks, THREADS >> > (positions_sorted, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
                 }
 
 
@@ -1834,6 +1861,7 @@ extern "C" void computephysics(float dt)
         ++framecount;
         if (framecount >= 100 && settings.debug == true)
         {
+		
 
             int izero = 0, ibig = INT_MAX;
             float fzero = 0.0f, fbig = FLT_MAX, fnbig = -FLT_MAX;
@@ -1923,3 +1951,6 @@ extern "C" void computephysics(float dt)
 
     
 }
+
+
+

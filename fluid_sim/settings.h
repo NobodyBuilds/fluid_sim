@@ -63,11 +63,11 @@ struct param {
 	float epsilon = 0.018f;
 	float chnageamount = 2000.0f;
 	float tilesize = 5.0f;
-	float variationStrength = 0.15f;
-	float color1R = 0.608f, color1G = 0.361f, color1B = 0.851f;
-	float color2R = 0.851f, color2G = 0.361f, color2B = 0.361f;
-	float color3R = 0.3f, color3G = 0.851f, color3B = 0.608f;
-	float color4R = 0.851f, color4G = 0.792f, color4B = 0.361f;
+	float variationStrength = 0.f;
+	float color1R = 1.0f, color1G = 1.0f, color1B = 1.0f;
+	float color2R = 1.0f, color2G = 1.0f, color2B = 1.0f;
+	float color3R = 1.0f, color3G = 1.0f, color3B = 1.0f;
+	float color4R = 1.0f, color4G = 1.0f, color4B = 1.0f;
 	float floorbounds = 600.0f;
 	float floorbounx = floorbounds * 0.5f;
 	float floorboun_x = -floorbounds * 0.5f;
@@ -92,7 +92,7 @@ struct param {
 	float maxframetime = 16.67;
 	float min_density, max_density, avg_density = 0;
 	float min_neardensity, max_neardensity, avg_neardensity = 0;
-	float extinctionR = 1.f, extinctionG = 0.0f, extinctionB = 0.0f;
+	float extinctionR = 1.f, extinctionG = (float)28/255, extinctionB = (float)28 / 255;
 	float mx = 75.0f, mz = 50.0f, my = 75.0f;
 	float nx = -75.0f, nz = -50.0f, ny = 25.0f;
 	float expandx = 0.0f, expandy = 0.0f, expandz = 0.0f;
@@ -112,9 +112,14 @@ struct param {
 	float voxelSize = 2.0f;
 	int dy = 25;
 	double fuc_ms = 0.0;
-	float stepsize = 1.0f;
+	float stepsize = 0.50f;
+	float ramfree = 0.0f;
+	float ramtotal = 0.0f;
 	float depth = 2.0f;
-	// === INT VARIABLES (4 bytes each) ===
+	float zoneradius = 5.0f;
+	float ylevel = 2.0f;
+	float omega = 1.0f;
+	float steer = 0.50f;
     int x = (int)ceil((maxX - minX) / voxelSize);
 	int y = (int)ceil((maxY - minY) / voxelSize);
 	int z = (int)ceil((maxz - minZ) / voxelSize);
@@ -129,25 +134,25 @@ struct param {
 	int substeps = 3;
 	int fpsCount = 0;
 	int pressureMode = 0;
-	int shaderType = 1;
+	int shaderType = 2;
 	int samplen = 1;
 	int blurMaxRadius = 32;    
 	int cframe = 30;// screen-space pixel radius cap
 
-	// === BOOL VARIABLES (1 byte each) ===
 	bool sph = true;
 	bool nopause = false;
 	bool heateffect = true;
 	bool addParticle = false;
 	bool boundingBox = true;
 	bool debug = false;
-	bool recordSim = true;
+	bool recordSim = false;
 	bool spawnstate = true;
 	bool cf = false;
 	bool h_cob;
 	bool gui = true;
 	bool movingbox = false;
 	bool ff = true;
+	bool turbulence = false;
 };
 extern param settings;
 

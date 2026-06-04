@@ -87,18 +87,14 @@ void main() {
         col = uColor1;
 
     // checker mix (slight variation between light/dark tiles)
-    vec3 baseColor = mix(col * 1.1, col * 0.85, checker);
+    vec3 baseColor = mix(col * 1.1, col * 0.85,1.0);
 
     // variation
     float rnd = hash(tile);
     baseColor += (rnd - 0.5) * uVariation;
 
-    // ── Sun-only directional lighting (BUG 2 fix) ─────────────────────────────
-    // Removed: baseColor * (0.3 + 0.7 * diff)
-    //   The 0.3 constant was an ambient sky term bleeding into the floor even
-    //   when the sun is dim/absent. Floor lighting is now purely directional:
-    //   only the sun's NdL term, with a tiny 0.02 floor so geometry in full
-    //   shadow isn't rendered pure black (physical bounce, not sky fill).
+ 
+
     vec3 normal = vec3(0.0, 1.0, 0.0);
     float diff = max(dot(normal, normalize(uLightDir)), 0.0);
     vec3 finalColor = baseColor * max(diff, 0.02);   // sun-only, no ambient sky

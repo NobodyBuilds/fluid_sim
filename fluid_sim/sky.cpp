@@ -63,7 +63,7 @@ void SkyRenderer::init() {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
     glEnableVertexAttribArray(0);
 
-    m_Shader = loadShaderProgram("sky.vert", "sky.frag"); // your loader
+    m_Shader = loadShaderProgram("D:\\visual_studio\\fluid_sim\\fluid_sim\\sky.vert", "D:\\visual_studio\\fluid_sim\\fluid_sim\\sky.frag");
 }
 
 void setUniform(GLuint shader, const char* name, const glm::mat4& mat) {

@@ -675,6 +675,13 @@ static void DrawWorldContent()
 
         ImGui::Text("Sun dir: (%.2f, %.2f, %.2f)",
             sky.sunDir.x, sky.sunDir.y, sky.sunDir.z);
+        ImGui::Spacing();
+        ImGui::Checkbox("turbulence", &settings.turbulence);
+        ImGui::DragFloat("zone radius", &settings.zoneradius, 0.1f, 0.1f, 50.0f);
+        ImGui::DragFloat("omega", &settings.omega, 0.1f, 0.1f, 50.0f);
+        ImGui::DragFloat("steer", &settings.steer, 0.1f, 0.1f, 5.0f);
+        ImGui::DragFloat("y level", &settings.ylevel, 0.1f, 0.0f, settings.maxY);
+
         // ── Time ─────────────────────────────────────────────────────────────────
     Sec("Time");
     ImGui::TextDisabled("Speed / Substeps are in the Quick tab.");
@@ -968,6 +975,7 @@ void ui_init()
             snprintf(lines[nLines].text, 128, "near density  min:%.4f  max:%.4f  avg:%.4f",
                 settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
             lines[nLines++].col = IM_COL32(180, 120, 120, 140);
+
         }
 
         snprintf(lines[nLines].text, 128, "%s",

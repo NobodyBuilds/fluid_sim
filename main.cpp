@@ -508,7 +508,9 @@ void initBoundingBox()
     settings.y = (int)ceil((settings.maxY - settings.minY) / settings.voxelSize);
     settings.z = (int)ceil((settings.maxz - settings.minZ) / settings.voxelSize);
 
-    reallocgrid();
+    if (settings.shaderType == 2) {
+        reallocgrid();
+    }
 }
 void calcKernels()
 {
