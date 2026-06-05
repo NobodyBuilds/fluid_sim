@@ -159,7 +159,6 @@ extern "C" void syncstruct() {
 	h.ny = settings.ny;
 	h.mz = settings.mz;
 	h.nz = settings.nz;
-	h.nearrestdensity = settings.nearRestDensity;
 	h.restitution = settings.restitution;
 	h.h = settings.h;
 	h.spacing = settings.spacing;
@@ -223,7 +222,6 @@ extern "C" bool initgpu(int count)
 
         size_t voxelBytes = (size_t)settings.x * (size_t)settings.y * (size_t)settings.z * sizeof(float);
         cudaMalloc(&voxelgrid, voxelBytes);
-        cudaMemset(voxelgrid, 0, voxelBytes);
     
 
     printf("Total particle mem allocated: %.2f MB\n", (count * (6 * sizeof(float4) +  sizeof(float3) + ( 2* sizeof(int)))) / (1024.0 * 1024.0)); // prints the mem size for total allocation with maxpartiucles buffer
@@ -695,7 +693,6 @@ __global__ void computeDensity(float cellSize,float4 *pos,float4 *vel,int hs,con
 
     float rhon = m_i * d.ndensity;
     float rho = m_i * d.sdensity;
-    float mindensity = rho * 0.5f;
 
     // Search 27 neighboring cells
 #pragma unroll 3
@@ -1554,7 +1551,6 @@ __global__ void reymarch(uchar4* output,float* grid,int sw,int sh,
 	float3 dir = forward + u * right + v * up;
 	dir = normalize(dir);
     float density = 0.0f;
-	uchar4 color = { 0, 0, 0, 255 };
     float3 invDir = { 1.f / dir.x, 1.f / dir.y, 1.f / dir.z };
 
     float t0x = (d.minX - campos.x) * invDir.x;
@@ -1638,7 +1634,6 @@ __global__ void reymarch(uchar4* output,float* grid,int sw,int sh,
                  refrColor.z * transmittance.z
             };
 
-            float3 color{ .05f,.35f,.55f };
 
 			float3 ambient = skyColor * 0.2f;
 
@@ -1800,7 +1795,7 @@ extern "C" void computephysics(float dt)
     float deltaTime = dt / settings.substeps;
 
 
-    if (settings.nopause)
+    if (!settings.pause)
     {
         for (int i = 0; i < settings.substeps; i++)
         {

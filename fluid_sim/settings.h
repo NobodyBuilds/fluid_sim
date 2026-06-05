@@ -42,12 +42,9 @@ struct param {
 	float spikycoef = 0.0f;
 	float Sdensity = 0.0f;
 	float cellSize = 1.0f;
-	float nearRestDensity = 0.153f;//not used atall wasted variable :D
-	//float spikycoef2 = 0.0f;
 	float ndensity = 0.0f;
 	float spikygradv = 0.0f;
 	float viscosity = 0.0f;
-	float airdrag = 0.35f;
 	float wx = 0.0f;
 	float wy = 0.0f;
 	float wz = 0.0f;
@@ -140,7 +137,7 @@ struct param {
 	int cframe = 30;// screen-space pixel radius cap
 
 	bool sph = true;
-	bool nopause = false;
+	bool pause = true;
 	bool heateffect = true;
 	bool addParticle = false;
 	bool boundingBox = true;

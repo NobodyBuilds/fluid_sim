@@ -427,7 +427,7 @@ void restartSimulation()
     }
     initFloor();
     registerBodies();
-    settings.nopause = false;
+    settings.pause = true;
     settings.spawnstate = true;
 }
 

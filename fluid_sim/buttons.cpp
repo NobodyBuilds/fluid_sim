@@ -29,11 +29,11 @@ extern "C" void buttons(GLFWwindow* window){
 
     if (down && !predown && !settings.h_cob)
     {
-        if (settings.nopause == true) {
-            settings.nopause = false;
+        if (settings.pause == true) {
+            settings.pause = false;
         }
-        else if (settings.nopause == false) {
-            settings.nopause = true;
+        else if (settings.pause == false) {
+            settings.pause = true;
         }
         settings.spawnstate = false;
     }

@@ -261,7 +261,7 @@ static void DrawQuickContent()
     // ── Simulation control ───────────────────────────────────────────────────
     Sec("Simulation");
     {
-        bool paused = !settings.nopause;
+        bool paused = settings.pause;
         const char* lbl = paused ? "Resume  (Space)" : "Pause  (Space)";
         ImVec4 bc = paused ? ImVec4(0.38f, 0.16f, 0.16f, 1) : ImVec4(0.20f, 0.20f, 0.20f, 1);
         ImVec4 bh = paused ? ImVec4(0.50f, 0.22f, 0.22f, 1) : ImVec4(0.28f, 0.28f, 0.28f, 1);
@@ -269,7 +269,7 @@ static void DrawQuickContent()
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bh);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.44f, 0.44f, 0.44f, 1));
         if (ImGui::Button(lbl, ImVec2(-1, 0))) {
-            settings.nopause = !settings.nopause;
+            settings.pause = !settings.pause;
             syncsettings = true;
         }
         ImGui::PopStyleColor(3);
@@ -387,8 +387,7 @@ static void DrawFluidContent()
     ImGui::SetItemTooltip("Repulsive force magnitude applied near bounding box walls.");
     ImGui::DragFloat("Wall dist##fl", &settings.walldst, 0.01f, 0.0001f, 10.f, "%.2f"); SYNC;
     ImGui::SetItemTooltip("Distance from wall at which repulsion kicks in.");
-	ImGui::DragFloat("airdrag##fl", &settings.airdrag, 0.001f, 0.f, 1.f, "%.3f"); SYNC;
-	ImGui::SetItemTooltip("Dampening factor applied to velocity each step.  Simulates air resistance.  0 = no drag.  0.1 = mild drag.  0.5 = heavy drag.");
+
 	ImGui::DragFloat("cellsize##fl", &settings.cellSize, 0.01f, 0.01f, 4.f, "%.2f"); SYNC;
 
     // ── Pipeline toggles ──────────────────────────────────────────────────────
@@ -979,10 +978,10 @@ void ui_init()
         }
 
         snprintf(lines[nLines].text, 128, "%s",
-            settings.nopause ? "running" : "PAUSED  --  Space to resume");
-        lines[nLines++].col = settings.nopause
+            !settings.pause ? "running" : "PAUSED  --  Space to resume");
+        lines[nLines++].col = !settings.pause
             ? IM_COL32(96, 168, 128, 170)
-            : IM_COL32(188, 100, 100, 230);
+            : IM_COL32(188, 100, 100, 230);       
 
             if (settings.h_cob) {
                 lines[nLines].col = IM_COL32(255, 0, 0, 225);
@@ -1074,7 +1073,7 @@ void ui_init()
             Badge(" SPH OFF ", ImVec4(0.38f, 0.30f, 0.10f, 1));
             ImGui::SameLine();
         }
-        if (!settings.nopause) {
+        if (settings.pause) {
             bx -= 62; ImGui::SetCursorPosX(bx);
             Badge(" PAUSED ", ImVec4(0.38f, 0.16f, 0.16f, 1));
         }
