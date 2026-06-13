@@ -377,3 +377,5 @@ FodyWeavers.xsd
 *.gpu.cpp
 *.gpu.cu
 *.lib
+*.glfw-3.4.bin.WIN64
+*.imgui-1.91.1
