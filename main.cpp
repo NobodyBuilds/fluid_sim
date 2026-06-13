@@ -657,7 +657,7 @@ void drawAll()
 float totalchange = 0.0f;
 	bool decreasing = true;
     void changeboundsdynamic() {
-
+		if (settings.pause) return;
         float dt = settings.fixedDt ;
         float value;
 
