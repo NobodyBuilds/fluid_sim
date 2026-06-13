@@ -375,3 +375,5 @@ FodyWeavers.xsd
 *.ptx
 *.cu.obj
 *.gpu.cpp
+*.gpu.cu
+*.lib
