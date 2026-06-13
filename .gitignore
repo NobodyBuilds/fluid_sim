@@ -379,3 +379,7 @@ FodyWeavers.xsd
 *.lib
 *.glfw-3.4.bin.WIN64
 *.imgui-1.91.1
+glfw/
+imgui/
+glad/
+glm/
