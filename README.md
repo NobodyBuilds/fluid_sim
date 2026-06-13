@@ -5,6 +5,17 @@ A real-time Smoothed Particle Hydrodynamics (SPH) fluid simulation running entir
 Designed for curiosity, and learning GPU-accelerated physics. Scales comfortably from 10k to 200k+ particles at interactive frame rates real-time also capable of running large simulations upto 1 million particles for non real-time renders to use it turn on "simulated" option from ui .
 
 ---
+## Demo
+
+
+<img width="1143" height="718" alt="Screenshot 2026-06-13 215447" src="https://github.com/user-attachments/assets/87ae0b64-3852-49b6-8082-248042bac6e2" />
+<img width="1415" height="855" alt="Screenshot 2026-06-13 215300" src="https://github.com/user-attachments/assets/113b5f8b-bd6e-4f1c-a6e7-ee63b04a315e" />
+<img width="962" height="557" alt="Screenshot 2026-06-13 215643" src="https://github.com/user-attachments/assets/ba1fb0e1-7871-4bcd-a73f-1bf38b4e87ee" />
+
+https://github.com/user-attachments/assets/be4634b1-8d69-4e34-8910-7fedd0038dc0
+
+
+---
 
 ## Requirements
 
