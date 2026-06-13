@@ -1,182 +1,97 @@
+# CUDA SPH Fluid Simulation
 
-A **real time Smoothed Particle Hydrodynamics (SPH) fluid ** simulation built for realistic fluid behavior using **GPU acceleration (CUDA)** and spatial hashing for fast neighbor searches.
+A real-time Smoothed Particle Hydrodynamics (SPH) fluid simulation running entirely on the GPU. Built from mathematical first principles using CUDA and OpenGL interop — no game engines, no pre-built solvers.
 
-This project focuses on **real‑time fluid physics**, tunable physical parameters, and scalability for thousands of particles — designed for experimentation, learning, and performance.
-
-------
-DEMOS
-
-
-<img width="1577" height="989" alt="Screenshot 2026-03-22 220007" src="https://github.com/user-attachments/assets/b38cf0bd-36fb-4b93-be6e-71a709db4a86" />
-
-
-<img width="1574" height="992" alt="Screenshot 2026-03-22 215431" src="https://github.com/user-attachments/assets/3e141bb0-af5e-4b9e-9e17-45c86015cd5c" />
-
--------------
-demo 1
-
-
-https://github.com/user-attachments/assets/cf8666d8-42ee-4858-b7d2-43289d918f50
-
-------------
-demo 2
-
-https://github.com/user-attachments/assets/a17c0f3a-0fe4-4cfb-b847-b9561721a54d
-
-
-
-
-
-
-
-
-
-
-
------------------------
-
----
-## comtrols
-wasd for camera movement
-shift and space to change height movement
-
-##  Features
-
-*  **GPU‑accelerated SPH (CUDA)**
-*  **Spatial grid / hashing** for fast neighbor lookup
-
-*  Realistic **pressure, density, viscosity & surface tension**
-*  Configurable **bounding box with friction & damping**
-*  Fully **tunable simulation parameters**
-*  Debug tools for density, pressure & neighbor counts
-*  Designed for **real‑time interactive simulation**
+Designed for curiosity, and learning GPU-accelerated physics. Scales comfortably from 10k to 200k+ particles at interactive frame rates real-time also capable of running large simulations upto 1 million particles for non real-time renders to use it turn on "simulated" option from ui .
 
 ---
 
-##  Core Simulation Model
+## Requirements
 
-This implementation follows a **force‑based SPH pipeline**:
-
-###  Density Computation
-
-Each particle samples nearby neighbors using a smoothing kernel:
-
-* Rest Density
-* Kernel Radius `h`
-* Mass per particle
-
-###  Pressure Calculation
-
-Pressure is derived using an equation of state:
-
-* Gas constant `K`
-* Gamma / stiffness
-* standard pressure equation
-* Density error from rest density
-
-###  Force Evaluation
-
-Particles receive forces from:
-
-* Pressure gradients
-* Viscosity forces
-* Surface tension
-* Gravity
-* Boundary collisions
-
-###  Integration
-
-Particle motion is updated via:
-
-* Velocity update
-* Position update
-* Damping & restitution
-
----
-
-##  Adjustable Parameters
-
-| Parameter        | Purpose                 |
-| ---------------- | ----------------------- |
-| `h`              | Smoothing radius        |
-| `cellSize`       | Grid resolution         |
-| `K`              | Pressure stiffness      |
-| `restDensity`    | Target fluid density    |
-| `alphaVisc`      | Linear viscosity        |
-| `betaVisc`       | Quadratic viscosity     |
-| `surfaceTension` | Surface smoothing       |
-| `gravity`        | External force          |
-| `restitution`    | Bounce strength         |
-| `friction`       | Wall sliding resistance |
-| `damping`        | Energy loss             |
-
----
-
-##  Key Goals
-
-* Stable **fluid compression without explosive pressure**
-* Balanced **neighbor count for natural water behavior**
-* High‑speed GPU performance for **10k–100k+ particles**
-* Parameter‑driven realism instead of hacks
-
----
-
-##  Architecture Overview
-
-```
-Particles
- ├─ Density Kernel Pass
- ├─ Pressure Solve Pass
- ├─ Force Accumulation Pass
- ├─ Integration Pass
- └─ Collision Handling
-
-Grid Hash
- ├─ Cell indexing
- └─ Neighbor search
-```
-
----
-
-##  Build & Run
- 
-### CUDA Build Example
-cuda is used as a lib which is compiled befor with the help of build_cuda.bat file
- download the whole repo and in the build cuda file edit the compute.cu address and compile before the whole project
-
-
-
-
-> Recommended GPU: nivida gpu 
-* if faced error in cuda compilation or runtime error then tweak the arch sm_ in the build_cuda.bat with your gpu arch like sm_75,sm_85 etc based on gpu series
----
-
-##  Debug & Diagnostics
-
-* Print neighbor counts
-* Inspect density & pressure
+- Windows (only supported platform)
+- NVIDIA GPU (CUDA-capable)
 
 
 ---
 
-##  Performance Tips
+## Build Instructions
 
-* Tune `h` and `cellSize` together
-* Keep average neighbors between **20–60**
-* Avoid extreme `K` values (causes pressure spikes)
+There is no CMake. The build is two steps:
 
+**Step 1 — Compile the compute engine**
+
+Open `build_cuda.bat` and verify the path to `compute.cu` is correct for your machine. Run the `.bat` file. This produces `compute.lib`, which contains all CUDA kernels.
+
+**Step 2 — Build the main project**
+
+Compile the rest of the project normally (MSVC). Link against `compute.lib` and the standard dependencies (CUDA runtime, GLFW, GLAD, ImGui).
+
+If CUDA compilation fails, the most common fix is adjusting the `sm_` architecture flag in `build_cuda.bat` to match your GPU.
 
 ---
 
-##  License
+## Controls
 
-Open‑source for learning & experimentation. Modify freely.
+| Input              | Action                  |
+| ------------------ | ----------------------- |
+| LMB drag           | Rotate camera           |
+| Scroll wheel       | Zoom in / out           |
+| W / A / S / D      | Move camera             |
+| Q                  | Move camera up          |
+| E                  | Move camera down        |
+| Space              | Pause / unpause         |
+| K                  | Restart simulation      |
+| H                  | Toggle UI visibility    |
+| X                  | Toggle debug overlay    |
 
 ---
 
-##  Credits
+## Features
 
-Built with passion for **fluid physics, GPU compute, and simulation engineering**.
+- proper ui with multiple tuneable parameters in multiple tabs
+- 3 rendering styles(in rendering tab)
+   1=native particles with velocity rgb(also allows selecting color for particle)
+   2=screen space effect for a blured fluid (looks decent)
+   3= ray marching fluid with great visuals(fps may fluctuate)
+- "simulated" option in ui allows switching from real-time to frame to frame.
+- tuneable fluid boundaries from ui in world tab(box can be hiiden from ui).
+- "wave generation" option in ui help to form waves for better visuals.
+- floor size,color can be tuned live fron ui
+- dymanic sky with moveable sun
+- Debug overlay showing per-particle density, pressure, and neighbor counts
+-dynamically emit particles with reallocation live (using preallocated buffer for emitter).
+---
 
-feel free to contibute 
+## Core Simulation Model
 
+
+- The simulation runs a standard force-based WCSPH pipeline each frame, fully on the GPU
+- uses trait eos for pressure
+- xsph for velocity smoothing
+- viscosity for motion damping
+- velocity verlet intigration
+
+---
+
+
+## Debug Overlay
+
+Press `X` to enable the debug overlay. Displays avg per-particle:
+
+- Neighbor count
+- Estimated density
+  
+
+Useful for diagnosing clumping, pressure spikes.
+
+---
+
+## License
+
+Open-source. Free to use, modify, and learn from.
+
+---
+
+## Credits
+
+Built from scratch in CUDA C++ and OpenGL — no game engine, no pre-built physics library.  
