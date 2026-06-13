@@ -2,7 +2,6 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "D:\visual_studio\fluid_sim\struct.h"
 #include <atomic>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -17,13 +16,17 @@
 #include <math_functions.h>
 #include <vector>
 #include "\visual_studio\fluid_sim\fluid_sim\settings.h"
-
+#include<fstream>
 #include <cub/cub.cuh>
 
 #define BLOCKS(n) ((n + 255) / 256)
 #define THREADS 256
 #define MAX_PARTICLES_PER_CELL 256
 // param settings;
+
+
+
+
 
 static void *d_sortTempStorage = nullptr;
 static size_t sortTempBytes = 0;
@@ -88,13 +91,6 @@ __host__ __device__ inline float3 &operator*=(float3 &v, float s)
 __host__ __device__ inline float dot(float3 a, float3 b)
 {
     return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-__host__ __device__ inline float3 cross(Vec3 a, Vec3 b)
-{
-    return {
-        a.y * b.z - a.z * b.y,
-        a.z * b.x - a.x * b.z,
-        a.x * b.y - a.y * b.x};
 }
 __host__ __device__ inline float length(float3 v)
 {
@@ -214,7 +210,6 @@ extern "C" bool initgpu(int count)
     cudaMalloc(&ncount, count * sizeof(int));
 	cudaMalloc(&d_cob, count * sizeof(int));
 	cudaMalloc(&xsph_delta, count * sizeof(float3));
-
 	cudaMemset(velocity_sorted, 0, count * sizeof(float4));
 
    // if (settings.shaderType == 2) {
@@ -932,12 +927,11 @@ __global__ void computePressure( float cellSize, const float4 *__restrict__ pos,
    // int org = particleIndex[i]; // where this particle came from in the original unsorted array
                                 // velocity written to org idx ,using swaps or memcpy caused visuals errors and performance heavy
     ncount[i] = neighborCount;
-    acl[i] += accl; // write back to original slot in acl array
-    // velocity verlet intigration fisrt step
-    /*velocity[org].x += accl.x * dt * 0.5;
-    velocity[org].y += accl.y * dt * 0.5;
-    velocity[org].z += accl.z * dt * 0.5;*/
+    acl[i] += accl;
+	
+ 
 }
+
 
 
 __global__ void scatterarray(int numParticles,float dt,float4* aclin,float4* aclout,float4* vel,int* particleindex,float3* xsph) {
@@ -1511,7 +1505,7 @@ __device__ float3 sampleFloorColor(float wx, float wz, float3 sundir) {
     float2 tile = { floorf(wx / d.tilesize), floorf(wz / d.tilesize) };
 
     float checker = fmodf(tile.x + tile.y, 2.0f);
-  
+    if (checker < 0.0f) checker += 2.0f;
 
     float3 col;
     if (wx > d.centerx && wz > d.centerz) col = d.col4;
@@ -1519,7 +1513,7 @@ __device__ float3 sampleFloorColor(float wx, float wz, float3 sundir) {
     else if (wx < d.centerx && wz < d.centerz) col = d.col2;
     else                                                  col = d.col1;
 
-    float3 baseColor =  col * 1.1f ;
+    float3 baseColor = (checker < 0.5f) ? col * 1.1f : col * 0.85f;
 
     float rnd = hashFloor(tile.x, tile.y);
     baseColor.x += (rnd - 0.5f) * d.variationStrength;
@@ -1831,18 +1825,11 @@ extern "C" void computephysics(float dt)
 
 
 
-                // reads from pridicted pos and writes back to orginal velocity array with velocity verlet 2nd step
-                computePressure<<<blocks, THREADS>>>( d_cellsize,positions_sorted, accelration_sorted, velocity_sorted,  HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex,ncount,xsph_delta);
-
+                
+                    computePressure << <blocks, THREADS >> > (d_cellsize, positions_sorted, accelration_sorted, velocity_sorted, HASH_TABLE_SIZE, d_cellStart, d_cellEnd, d_particleIndex, ncount, xsph_delta);
+                
 
                
-
-
-
-
-
-
-                
 
 
                 scatterarray << <blocks, THREADS >> > (totalBodies, deltaTime, accelration_sorted, accelration, velocity, d_particleIndex,xsph_delta);

@@ -361,3 +361,17 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Solution files
+*.sln
+
+# Executables and libraries
+*.exe
+*.dll
+
+# CUDA build artifacts
+*.cubin
+*.fatbin
+*.ptx
+*.cu.obj
+*.gpu.cpp

@@ -276,47 +276,50 @@ static void DrawQuickContent()
         ImGui::SetItemTooltip("Toggle pause / resume.  Same as Space.");
         
     }
-
-    ImGui::Spacing();
     
-    ImGui::InputInt("Substeps##q", &settings.substeps); SYNC;
-    if (settings.substeps < 1) settings.substeps = 1;
-    ImGui::SetItemTooltip("Physics steps per frame.  Higher = more stable at large k, but costs linearly more GPU time.");
+   
 
-    ImGui::Checkbox("Simulate long run##q", &settings.recordSim); SYNC;
-    ImGui::SetItemTooltip("Renders every frame without skipping.  Useful for recording or high-count simulations.");
+        ImGui::Spacing();
 
-    // ── Key physics (quick-access; full detail in Fluid tab) ─────────────────
-    Sec("Key Physics");
-    ImGui::TextDisabled("Full detail in Fluid tab.");
-    ImGui::Spacing();
+        ImGui::InputInt("Substeps##q", &settings.substeps); SYNC;
+        if (settings.substeps < 1) settings.substeps = 1;
+        ImGui::SetItemTooltip("Physics steps per frame.  Higher = more stable at large k, but costs linearly more GPU time.");
 
-    ImGui::SliderFloat("Gravity##q", &settings.gravityforce, 0.0f, 1000.0f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Constant downward acceleration per step.  0 = weightless.  150 = default.");
+        ImGui::Checkbox("Simulate long run##q", &settings.recordSim); SYNC;
+        ImGui::SetItemTooltip("Renders every frame without skipping.  Useful for recording or high-count simulations.");
 
-    if (ImGui::SliderFloat("h##q", &settings.h, 0.1f, 20.0f, "%.2f")) {
-        calcKernels();
-        syncsettings = true;
-    }
-    ImGui::SetItemTooltip("Smoothing radius.  All kernel coefficients update automatically.");
+        // ── Key physics (quick-access; full detail in Fluid tab) ─────────────────
+        Sec("Key Physics");
+        ImGui::TextDisabled("Full detail in Fluid tab.");
+        ImGui::Spacing();
 
-    ImGui::DragFloat("Rest rho##q", &settings.rest_density, 0.0005f, 0.0f, 1.0f, "%.5f"); SYNC;
-    ImGui::SetItemTooltip("Target equilibrium density.  Higher = particles draw together.");
+        ImGui::SliderFloat("Gravity##q", &settings.gravityforce, 0.0f, 1000.0f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Constant downward acceleration per step.  0 = weightless.  150 = default.");
 
-    ImGui::DragFloat("Stiffness k##q", &settings.pressure, 2.0f, 0.0f, 5000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Compression resistance.  Start low, increase gradually.");
+        if (ImGui::SliderFloat("h##q", &settings.h, 0.1f, 20.0f, "%.2f")) {
+            calcKernels();
+            syncsettings = true;
+        }
+        ImGui::SetItemTooltip("Smoothing radius.  All kernel coefficients update automatically.");
 
-    ImGui::DragFloat("Near k'##q", &settings.nearpressure, 2.0f, 0.0f, 10000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Short-range repulsion.  In this solver, keep it near the same order as stiffness k.");
+        ImGui::DragFloat("Rest rho##q", &settings.rest_density, 0.0005f, 0.0f, 1.0f, "%.5f"); SYNC;
+        ImGui::SetItemTooltip("Target equilibrium density.  Higher = particles draw together.");
 
-    ImGui::DragFloat("Viscosity##q", &settings.visc, 0.01f, 0.0f, 200.f, "%.3f"); SYNC;
-    ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey.");
-  
-    // ── Toggles ──────────────────────────────────────────────────────────────
-    Sec("Toggles");
-    ImGui::Checkbox("SPH forces##q", &settings.sph); SYNC;
-    ImGui::SetItemTooltip("Enable density + pressure force kernels.");
-    ImGui::SameLine(140);
+        ImGui::DragFloat("Stiffness k##q", &settings.pressure, 2.0f, 0.0f, 5000.f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Compression resistance.  Start low, increase gradually.");
+
+        ImGui::DragFloat("Near k'##q", &settings.nearpressure, 2.0f, 0.0f, 10000.f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Short-range repulsion.  In this solver, keep it near the same order as stiffness k.");
+
+        ImGui::DragFloat("Viscosity##q", &settings.visc, 0.01f, 0.0f, 200.f, "%.3f"); SYNC;
+        ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey.");
+
+        // ── Toggles ──────────────────────────────────────────────────────────────
+        Sec("Toggles");
+        ImGui::Checkbox("SPH forces##q", &settings.sph); SYNC;
+        ImGui::SetItemTooltip("Enable density + pressure force kernels.");
+        ImGui::SameLine(140);
+    
     ImGui::Checkbox("Heat colour##q", &settings.heateffect);  SYNC;
     ImGui::SetItemTooltip("Shift particle colour by kinetic energy.  Blue = slow.  Red = fast.");
 
@@ -331,70 +334,71 @@ static void DrawQuickContent()
 // ─── FLUID ───────────────────────────────────────────────────────────────────
 static void DrawFluidContent()
 {
-    // ── Kernel ───────────────────────────────────────────────────────────────
-    Sec("Kernel");
-    if (ImGui::SliderFloat("h##fl", &settings.h, 0.1f, 20.0f, "%.2f")) {
-        calcKernels();
-        syncsettings = true;
-    }
-    ImGui::SetItemTooltip(
-        "Interaction radius.  All coefficients derived from this.\n"
-        "Larger h = thicker, more cohesive fluid.");
-
-    if (ImGui::TreeNodeEx("Coefficients  (read-only)", ImGuiTreeNodeFlags_SpanFullWidth))
-    {
-        ImGui::BeginDisabled();
-        ImGui::InputFloat("poly6", &settings.pollycoef6, 0, 0, "%.4e");
-        ImGui::InputFloat("spiky", &settings.spikycoef, 0, 0, "%.4e");
-        ImGui::InputFloat("spiky grad", &settings.spikygradv, 0, 0, "%.4e");
-        ImGui::InputFloat("visc lap", &settings.viscosity, 0, 0, "%.4e");
-        ImGui::InputFloat("self rho", &settings.Sdensity, 0, 0, "%.4e");
-        ImGui::InputFloat("near self", &settings.ndensity, 0, 0, "%.4e");
-		ImGui::Text("neighbor count: min:%d  max: %d  avg: %.1f", settings.min_n, settings.max_n, settings.avg_n);
-        ImGui::Text("density: min:%.4f  max: %.4f  avg: %.4f", settings.min_density, settings.max_density, settings.avg_density);
-        ImGui::Text("near density: min:%.4f  max: %.4f  avg: %.4f", settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
-        ImGui::EndDisabled();
-        ImGui::TreePop();
-    }
-
-    // ── Density ──────────────────────────────────────────────────────────────
-    Sec("Density");
-    ImGui::DragFloat("Rest rho##fl", &settings.rest_density, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
-    ImGui::SetItemTooltip("Target equilibrium density.  Raise to attract particles.  Lower to spread them.");
-
-    // ── Pressure ─────────────────────────────────────────────────────────────
-    Sec("Pressure");
-    ImGui::DragFloat("Stiffness k", &settings.pressure, 2.f, 0.f, 5000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100-500, increase gradually.");
-    ImGui::DragFloat("Near k'", &settings.nearpressure, 2.f, 0.f, 10000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Keep near the same order as k.");
-    // xsph 
-    
-    
-    // ── Viscosity ─────────────────────────────────────────────────────────────
-    Sec("Viscosity");
-	ImGui::DragFloat("XSPH##fl", &settings.epsilon, 0.001f, 0.f, 1.f, "%.9f"); SYNC;
-    ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.001f, 0.f, 10.0f, "%.4f"); SYNC;
-    ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey / thick fluid.");
   
-    // ── Forces ───────────────────────────────────────────────────────────────
-    Sec("Forces");
-    ImGui::SliderFloat("Gravity##fl", &settings.gravityforce, 0.f, 1000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Downward acceleration each step.");
-    ImGui::InputFloat("Restitution##fl", &settings.restitution, 0.02f, 0.1f, "%.3f"); SYNC;
-    ImGui::SetItemTooltip("Wall bounce coefficient.  0.0 = fully inelastic.  1.0 = perfectly elastic.");
-    ImGui::DragFloat("Wall force##fl", &settings.wallrep, 0.1f, 0.f, 10000.f, "%.0f"); SYNC;
-    ImGui::SetItemTooltip("Repulsive force magnitude applied near bounding box walls.");
-    ImGui::DragFloat("Wall dist##fl", &settings.walldst, 0.01f, 0.0001f, 10.f, "%.2f"); SYNC;
-    ImGui::SetItemTooltip("Distance from wall at which repulsion kicks in.");
+        // ── Kernel ───────────────────────────────────────────────────────────────
+        Sec("Kernel");
+        if (ImGui::SliderFloat("h##fl", &settings.h, 0.1f, 20.0f, "%.2f")) {
+            calcKernels();
+            syncsettings = true;
+        }
+        ImGui::SetItemTooltip(
+            "Interaction radius.  All coefficients derived from this.\n"
+            "Larger h = thicker, more cohesive fluid.");
 
-	ImGui::DragFloat("cellsize##fl", &settings.cellSize, 0.01f, 0.01f, 4.f, "%.2f"); SYNC;
+        if (ImGui::TreeNodeEx("Coefficients  (read-only)", ImGuiTreeNodeFlags_SpanFullWidth))
+        {
+            ImGui::BeginDisabled();
+            ImGui::InputFloat("poly6", &settings.pollycoef6, 0, 0, "%.4e");
+            ImGui::InputFloat("spiky", &settings.spikycoef, 0, 0, "%.4e");
+            ImGui::InputFloat("spiky grad", &settings.spikygradv, 0, 0, "%.4e");
+            ImGui::InputFloat("visc lap", &settings.viscosity, 0, 0, "%.4e");
+            ImGui::InputFloat("self rho", &settings.Sdensity, 0, 0, "%.4e");
+            ImGui::InputFloat("near self", &settings.ndensity, 0, 0, "%.4e");
+            ImGui::Text("neighbor count: min:%d  max: %d  avg: %.1f", settings.min_n, settings.max_n, settings.avg_n);
+            ImGui::Text("density: min:%.4f  max: %.4f  avg: %.4f", settings.min_density, settings.max_density, settings.avg_density);
+            ImGui::Text("near density: min:%.4f  max: %.4f  avg: %.4f", settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
+            ImGui::EndDisabled();
+            ImGui::TreePop();
+        }
 
-    // ── Pipeline toggles ──────────────────────────────────────────────────────
-    Sec("Pipeline");
-    ImGui::Checkbox("SPH forces##fl", &settings.sph); SYNC;
-    ImGui::SetItemTooltip("Master toggle for density + pressure force kernels.\nDisable to watch purely gravity-driven motion.");
+        // ── Density ──────────────────────────────────────────────────────────────
+        Sec("Density");
+        ImGui::DragFloat("Rest rho##fl", &settings.rest_density, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
+        ImGui::SetItemTooltip("Target equilibrium density.  Raise to attract particles.  Lower to spread them.");
 
+        // ── Pressure ─────────────────────────────────────────────────────────────
+        Sec("Pressure");
+        ImGui::DragFloat("Stiffness k", &settings.pressure, 2.f, 0.f, 5000.f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100-500, increase gradually.");
+        ImGui::DragFloat("Near k'", &settings.nearpressure, 2.f, 0.f, 10000.f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Keep near the same order as k.");
+        // xsph 
+
+
+        // ── Viscosity ─────────────────────────────────────────────────────────────
+        Sec("Viscosity");
+        ImGui::DragFloat("XSPH##fl", &settings.epsilon, 0.001f, 0.f, 1.f, "%.9f"); SYNC;
+        ImGui::DragFloat("Viscosity##fl", &settings.visc, 0.001f, 0.f, 10.0f, "%.4f"); SYNC;
+        ImGui::SetItemTooltip("Velocity averaging between neighbours.  Low = water.  High = honey / thick fluid.");
+
+        // ── Forces ───────────────────────────────────────────────────────────────
+        Sec("Forces");
+        ImGui::SliderFloat("Gravity##fl", &settings.gravityforce, 0.f, 1000.f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Downward acceleration each step.");
+        ImGui::InputFloat("Restitution##fl", &settings.restitution, 0.02f, 0.1f, "%.3f"); SYNC;
+        ImGui::SetItemTooltip("Wall bounce coefficient.  0.0 = fully inelastic.  1.0 = perfectly elastic.");
+        ImGui::DragFloat("Wall force##fl", &settings.wallrep, 0.1f, 0.f, 10000.f, "%.0f"); SYNC;
+        ImGui::SetItemTooltip("Repulsive force magnitude applied near bounding box walls.");
+        ImGui::DragFloat("Wall dist##fl", &settings.walldst, 0.01f, 0.0001f, 10.f, "%.2f"); SYNC;
+        ImGui::SetItemTooltip("Distance from wall at which repulsion kicks in.");
+
+        ImGui::DragFloat("cellsize##fl", &settings.cellSize, 0.01f, 0.01f, 4.f, "%.2f"); SYNC;
+
+        // ── Pipeline toggles ──────────────────────────────────────────────────────
+        Sec("Pipeline");
+        ImGui::Checkbox("SPH forces##fl", &settings.sph); SYNC;
+        ImGui::SetItemTooltip("Master toggle for density + pressure force kernels.\nDisable to watch purely gravity-driven motion.");
+    
      
 }
 

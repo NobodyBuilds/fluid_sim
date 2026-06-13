@@ -19,7 +19,7 @@
     <Filter Include="settings">
       <UniqueIdentifier>{7fef3366-a7fd-4365-9c6f-47be15481411}</UniqueIdentifier>
     </Filter>
-    <Filter Include="settings\floor">
+    <Filter Include="floor">
       <UniqueIdentifier>{325abdf0-8e2d-4a79-a559-ecd36e18f2e1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -59,7 +59,7 @@
       <Filter>buttons</Filter>
     </ClCompile>
     <ClCompile Include="floor_render.cpp">
-      <Filter>settings\floor</Filter>
+      <Filter>floor</Filter>
     </ClCompile>
     <ClCompile Include="sky.cpp">
       <Filter>sky</Filter>
@@ -81,7 +81,7 @@
       <Filter>buttons</Filter>
     </ClInclude>
     <ClInclude Include="floor.h">
-      <Filter>settings\floor</Filter>
+      <Filter>floor</Filter>
     </ClInclude>
     <ClInclude Include="sky.h">
       <Filter>sky</Filter>

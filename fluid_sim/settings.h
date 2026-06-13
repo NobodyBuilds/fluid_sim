@@ -150,6 +150,7 @@ struct param {
 	bool movingbox = false;
 	bool ff = true;
 	bool turbulence = false;
+	bool aipressure = false;
 };
 extern param settings;
 

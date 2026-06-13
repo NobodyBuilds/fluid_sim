@@ -21,7 +21,6 @@
 #include <chrono>
 #include <omp.h>
 #include <unordered_map>
-#include "struct.h"
 #include "fluid_sim/settings.h"
 #include "source/compute.h"
 #include "fluid_sim/main.h"
@@ -425,6 +424,7 @@ void restartSimulation()
         freegpu();
         return;
     }
+   
     initFloor();
     registerBodies();
     settings.pause = true;

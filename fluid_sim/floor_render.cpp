@@ -87,7 +87,7 @@ void main() {
         col = uColor1;
 
     // checker mix (slight variation between light/dark tiles)
-    vec3 baseColor = mix(col * 1.1, col * 0.85,1.0);
+    vec3 baseColor = mix(col * 1.1, col * 0.85,checker);
 
     // variation
     float rnd = hash(tile);
