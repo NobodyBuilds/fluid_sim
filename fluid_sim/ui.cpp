@@ -944,7 +944,7 @@ void ui_init()
 
         // ── Pre-format every line so we can measure before drawing ────────────
         struct HudLine { char text[128]; ImU32 col; };
-        HudLine lines[8];
+        HudLine lines[16];
         int nLines = 0;
 
         ImU32 fpsCol = settings.avgFps > 100 ? IM_COL32(96, 188, 148, 210)
@@ -979,6 +979,8 @@ void ui_init()
                 settings.min_neardensity, settings.max_neardensity, settings.avg_neardensity);
             lines[nLines++].col = IM_COL32(180, 120, 120, 140);
 
+			snprintf(lines[nLines].text, 128, "compression  %.2f %% ", settings.compression * 100.0f );
+            lines[nLines++].col = IM_COL32(180, 120, 120, 140);
         }
 
         snprintf(lines[nLines].text, 128, "%s",

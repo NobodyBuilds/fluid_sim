@@ -39,6 +39,7 @@ size_t free_mem, total_mem;
 __device__ int min_nb, max_nb, avg_nb = 0;
 __device__ float min_Density, max_Density, avg_Density = 0;
 __device__ float min_nearDensity, max_nearDensity, avg_nearDensity = 0;
+__device__ float compression = 0.0f;
 
 // device helpers
 __host__ __device__ inline float clamp(float x, float lo, float hi)
@@ -1776,7 +1777,13 @@ void raymarchingrender() {
     }
 }
 
-
+__global__ void getcompressionvalues(float4* __restrict__ pos) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= d.count) return;
+    float density = __ldg(&pos[i].w);
+    float val = fabsf(density - d.restDensity) / density;
+    atomicAdd(&compression, val);
+}
 
 extern "C" void computephysics(float dt)
 {
@@ -1811,15 +1818,7 @@ extern "C" void computephysics(float dt)
 
 
 
-                if (settings.shaderType == 2) {
-
-                   // cudaMemset(voxelgrid, 0, settings.x * settings.y * settings.z * sizeof(float));
-
-
-                    //splatVoxelsTrilinear << <blocks, THREADS >> > (positions_sorted, voxelgrid, settings.voxelSize, settings.x, settings.y, settings.z);
-                }
-
-
+               
 
 
 
@@ -1844,7 +1843,7 @@ extern "C" void computephysics(float dt)
         if (framecount >= 100 && settings.debug == true)
         {
 		
-
+           
             int izero = 0, ibig = INT_MAX;
             float fzero = 0.0f, fbig = FLT_MAX, fnbig = -FLT_MAX;
 
@@ -1861,13 +1860,20 @@ extern "C" void computephysics(float dt)
             cudaMemcpyToSymbol(avg_nearDensity, &fzero, sizeof(float));
 
             debug<<<blocks, THREADS>>>(totalBodies, positions_sorted, velocity_sorted, ncount);
+            float zero = 0.0f;
+            cudaMemcpyToSymbol(compression, &zero, sizeof(float));
+			getcompressionvalues << <blocks, THREADS >> > (positions_sorted);
+			
             cudaDeviceSynchronize();
 
             // read back
             int h_minN, h_maxN, h_sumN;
             float h_minD, h_maxD, h_sumD;
             float h_minND, h_maxND, h_sumND;
+			float h_compression;
 
+
+            cudaMemcpyFromSymbol(&h_compression, compression, sizeof(float));
             cudaMemcpyFromSymbol(&h_minN, min_nb, sizeof(int));
             cudaMemcpyFromSymbol(&h_maxN, max_nb, sizeof(int));
             cudaMemcpyFromSymbol(&h_sumN, avg_nb, sizeof(int));
@@ -1879,8 +1885,13 @@ extern "C" void computephysics(float dt)
             cudaMemcpyFromSymbol(&h_minND, min_nearDensity, sizeof(float));
             cudaMemcpyFromSymbol(&h_maxND, max_nearDensity, sizeof(float));
             cudaMemcpyFromSymbol(&h_sumND, avg_nearDensity, sizeof(float));
-
+            cudaError_t err = cudaGetLastError();
+            if (err) {
+                printf("ERROR: debug launch: %s\n", cudaGetErrorString(err));
+            }
             // push to settings
+			settings.compression = h_compression/settings.count;
+			
             settings.min_n = h_minN;
             settings.max_n = h_maxN;
             settings.avg_n = (float)h_sumN / totalBodies;

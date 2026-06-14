@@ -117,6 +117,7 @@ struct param {
 	float ylevel = 2.0f;
 	float omega = 1.0f;
 	float steer = 0.50f;
+	float compression = 0.0f;
     int x = (int)ceil((maxX - minX) / voxelSize);
 	int y = (int)ceil((maxY - minY) / voxelSize);
 	int z = (int)ceil((maxz - minZ) / voxelSize);
