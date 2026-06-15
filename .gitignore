@@ -380,6 +380,7 @@ FodyWeavers.xsd
 glfw-3.4.bin.WIN64/
 imgui-1.91.1/
 glm-1.0.2/
+.vscode/
 glfw/
 imgui/
 glad/
