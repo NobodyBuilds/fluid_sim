@@ -1903,6 +1903,16 @@ extern "C" void computephysics(float dt)
             settings.min_neardensity = h_minND;
             settings.max_neardensity = h_maxND;
             settings.avg_neardensity = h_sumND / totalBodies;
+            if (settings.tunepresssure) {
+                float d_error = settings.avg_density - settings.rest_density;
+                if (d_error > 0.0f) {
+                    settings.pressure +=settings.tuneval;
+                }
+                else {
+                    settings.pressure -= settings.tuneval;
+                }
+				syncstruct();
+            }
 
             framecount = 0;
         }

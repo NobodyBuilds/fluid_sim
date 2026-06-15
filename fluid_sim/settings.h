@@ -24,7 +24,7 @@ struct param {
 	float h = 4.0f;
 	float h2 = h * h;
 	float rest_density = 0.01800f;
-	float pressure = 140.0f;
+	float pressure = 170.0f;
 	float nearpressure = 40.0f;
 	float visc = 0.0f;
 	float gravityforce = 98.0f;
@@ -118,6 +118,7 @@ struct param {
 	float omega = 1.0f;
 	float steer = 0.50f;
 	float compression = 0.0f;
+	float tuneval = 1.0f;
     int x = (int)ceil((maxX - minX) / voxelSize);
 	int y = (int)ceil((maxY - minY) / voxelSize);
 	int z = (int)ceil((maxz - minZ) / voxelSize);
@@ -152,6 +153,7 @@ struct param {
 	bool ff = true;
 	bool turbulence = false;
 	bool aipressure = false;
+	bool tunepresssure = false;
 };
 extern param settings;
 

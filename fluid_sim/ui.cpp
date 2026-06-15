@@ -370,6 +370,11 @@ static void DrawFluidContent()
         Sec("Pressure");
         ImGui::DragFloat("Stiffness k", &settings.pressure, 2.f, 0.f, 5000.f, "%.0f"); SYNC;
         ImGui::SetItemTooltip("Compression resistance.  Too high = instability.  Start ~100-500, increase gradually.");
+		ImGui::Checkbox("auto tune pressure##fl", &settings.tunepresssure); 
+        if(settings.tunepresssure)
+        {
+			ImGui::DragFloat("tune rate", &settings.tuneval, 0.001f, 0.f, 10000.f, "%.5f"); SYNC;
+		}
         ImGui::DragFloat("Near k'", &settings.nearpressure, 2.f, 0.f, 10000.f, "%.0f"); SYNC;
         ImGui::SetItemTooltip("Short-range repulsion.  Prevents collapse at close range.  Keep near the same order as k.");
         // xsph 
