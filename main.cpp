@@ -680,7 +680,9 @@ float totalchange = 0.0f;
 
         }
 		initBoundingBox();
-		syncstruct();
+
+
+        syncstruct();
     }
 
 
